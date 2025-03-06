@@ -52,13 +52,13 @@ async def on_message(message: discord.Message):
     if message.author.bot or message.content.startswith("!"):
         return
 
-    # Process the message with the agent you wrote
-    # Open up the agent.py file to customize the agent
+    # Process the message with the agent
     logger.info(f"Processing message from {message.author}: {message.content}")
     response = await agent.run(message)
-
-    # Send the response back to the channel
-    await message.reply(response)
+    
+    # Only reply if there's a response
+    if response:
+        await message.reply(response)
 
 
 # Commands
@@ -73,6 +73,25 @@ async def ping(ctx, *, arg=None):
         await ctx.send("Pong!")
     else:
         await ctx.send(f"Pong! Your argument was {arg}")
+
+
+@bot.command(name="arxiv", help="Fetches and summarizes recent arxiv papers")
+async def arxiv_command(ctx):
+    # Send initial response
+    initial_msg = await ctx.send("Fetching recent arxiv papers...")
+    
+    # Get papers and summary from agent
+    response = await agent.run(ctx.message)
+    
+    # Split response into chunks of 1900 characters (leaving room for formatting)
+    chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
+    
+    # Edit the first message with the first chunk
+    await initial_msg.edit(content=chunks[0])
+    
+    # Send additional chunks as new messages if needed
+    for chunk in chunks[1:]:
+        await ctx.send(chunk)
 
 
 # Start the bot, connecting it to the gateway
