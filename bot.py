@@ -58,7 +58,16 @@ async def on_message(message: discord.Message):
     
     # Only reply if there's a response
     if response:
-        await message.reply(response)
+        # Create a thread with the original message content as title (truncate if too long)
+        thread_name = message.content[:100] + "..." if len(message.content) > 100 else message.content
+        thread = await message.create_thread(name=thread_name)
+        
+        # Split response into chunks 
+        chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
+        
+        # Send chunks in the thread
+        for chunk in chunks:
+            await thread.send(chunk)
 
 
 # Commands

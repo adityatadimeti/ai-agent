@@ -69,15 +69,29 @@ class MistralAgent:
         return combined_text
 
     async def run(self, message: discord.Message):
-        if message.content.startswith("!arxiv"):
-            # Split the message to check for search term
-            parts = message.content.split(maxsplit=1)
+        # Check if the message is asking about arxiv papers
+        arxiv_keywords = [
+            "arxiv", "research paper", "scientific paper", "recent papers",
+            "latest research", "new papers", "academic papers"
+        ]
+        
+        message_lower = message.content.lower()
+        is_arxiv_query = any(keyword in message_lower for keyword in arxiv_keywords)
+        
+        if is_arxiv_query:
+            # Look for potential search terms
+            search_terms = []
+            for term in ["about", "on", "in", "regarding", "related to"]:
+                if term in message_lower:
+                    # Get the text after the keyword
+                    parts = message_lower.split(term, 1)
+                    if len(parts) > 1:
+                        search_terms.append(parts[1].strip())
             
-            if len(parts) > 1:
-                # If there's a search term, use topic search
-                papers_text = await self.fetch_arxiv_papers_by_topic(parts[1])
+            # Use the first found search term if any exist
+            if search_terms:
+                papers_text = await self.fetch_arxiv_papers_by_topic(search_terms[0])
             else:
-                # If no search term, use original general search
                 papers_text = await self.fetch_arxiv_papers()
             
             # Create prompt for summarization
