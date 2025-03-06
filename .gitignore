@@ -12,3 +12,6 @@ wheels/
 # Secrets
 .env
 .example.env
+
+# ChromaDB
+chroma_db/
