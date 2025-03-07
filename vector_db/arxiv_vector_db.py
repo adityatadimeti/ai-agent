@@ -142,7 +142,7 @@ class ArxivAbstractDB:
         """
         try:
             results = self.collection.query(
-                query_texts=[query_text],
+                query_texts=query_text,  # Changed from query_texts=[query_text]
                 n_results=top_k,
                 where=filter_dict
             )
@@ -162,6 +162,38 @@ class ArxivAbstractDB:
         except Exception as e:
             print(f"Error during query: {e}")
             return []
+        
+    def check_query_relevance(self, query: str, threshold: float = 0.75) -> tuple[float, bool]: 
+        """
+        Check if a query is relevant to the content in the vector database.
+        
+        Args:
+            query_text (str): The query text to check
+            threshold (float): Similarity threshold (0 to 1) for considering results relevant
+            
+        Returns:
+            tuple[float, bool]: (max_relevance_score, is_relevant)
+            - max_relevance_score: Score between 0 and 1 indicating maximum relevance
+            - is_relevant: Boolean indicating if query is relevant enough
+        """
+        try:
+            # Query the collection with a single result to get most relevant match
+            result = self.query(query, top_k=1)
+            
+            # Handle empty results
+            if not result:
+                return 0.0, False
+                
+            # ChromaDB returns L2 distances, convert to similarity score (0 to 1)
+            # Typical L2 distances range from 0 (identical) to 2 (completely different)
+            distance = result[0]['distance']
+            similarity = 1 - distance # Convert to 0-1 scale
+
+            return similarity, similarity >= threshold
+            
+        except Exception as e:
+            print(f"Error during relevance check: {e}")
+            return 0.0, False
 
 class ArxivAbstractFetcher:
     """
@@ -420,6 +452,7 @@ class ArxivFullTextDB:
             # Format results
             formatted_results = []
             for idx in range(len(results['documents'][0])):
+                print(results['distances'])
                 result = {
                     'content': results['documents'][0][idx],
                     'distance': results['distances'][0][idx],
@@ -432,6 +465,38 @@ class ArxivFullTextDB:
         except Exception as e:
             print(f"Error during query: {e}")
             return []
+        
+    def check_query_relevance(self, query: str, threshold: float = 0.75) -> tuple[float, bool]: 
+        """
+        Check if a query is relevant to the content in the vector database.
+        
+        Args:
+            query_text (str): The query text to check
+            threshold (float): Similarity threshold (0 to 1) for considering results relevant
+            
+        Returns:
+            tuple[float, bool]: (max_relevance_score, is_relevant)
+            - max_relevance_score: Score between 0 and 1 indicating maximum relevance
+            - is_relevant: Boolean indicating if query is relevant enough
+        """
+        try:
+            # Query the collection with a single result to get most relevant match
+            result = self.query(query, top_k=1)
+            
+            # Handle empty results
+            if not result:
+                return 0.0, False
+                
+            # ChromaDB returns L2 distances, convert to similarity score (0 to 1)
+            # Typical L2 distances range from 0 (identical) to 2 (completely different)
+            distance = result[0]['distance']
+            similarity = 1 - distance # Convert to 0-1 scale
+
+            return similarity, similarity >= threshold
+            
+        except Exception as e:
+            print(f"Error during relevance check: {e}")
+            return 0.0, False
 
 class ArxivFullTextFetcher:
     """
@@ -501,3 +566,22 @@ class ArxivFullTextFetcher:
                 "primary_category": doc.metadata.get("primary_category", "")
             })
         return papers
+    
+
+
+# Check if query in the database
+# If not fetch arxiv abstracts
+
+
+def main():
+    arxiv_abstract_db = ArxivAbstractDB()
+    arxiv_full_text_db = ArxivFullTextDB()
+    
+    # Fetch and add abstracts
+    result = arxiv_full_text_db.check_query_relevance("Attention is all you need")
+    result_from_query = arxiv_full_text_db.query("Attention is all you need", top_k=1)
+    print(result)
+    # print(result_from_query)
+
+if __name__ == "__main__":
+    main()
