@@ -57,11 +57,12 @@ The user is asking you to do research on a specific topic. We have outlined the 
 - Outputs: Summary of the abstract
 - Prerequisites: 2 OR 3
 
-6. Name of Task: Get daily update of papers
+6. Name of Task: Compress the summaries into a single summary
 (Below is information about the task above, do not include it in the task description)
-- Inputs: None
-- Outputs: List of papers
-- Prerequisites: 1 OR 2
+- Inputs: Summary of the paper, summary of the abstract
+- Outputs: Compressed summary
+- Prerequisites: 4 OR 5
+- SHOULD ALWAYS BE COMPLETED
 """
 
 TASKS = [
@@ -70,7 +71,7 @@ TASKS = [
     "Query the Arxiv API for papers",
     "Summarize the paper",
     "Summarize the abstract",
-    "Get daily update of papers"
+    "Compress the summaries into a single summary"
 ]
 
 class UserRequest(BaseModel):
@@ -86,6 +87,7 @@ class ChatbotState(TypedDict):
     arxiv_api_papers_info: List[Dict[str, str]]
     summarize_abstract_info: List[Dict[str, str]]
     summarize_paper_info: List[Dict[str, str]]
+    compress_summaries_info: List[Dict[str, str]]
 
 class ChatBotTools:
     def __init__(self):
@@ -184,7 +186,6 @@ class ChatBotTools:
                 abstract_summary = call_llm(abstract_summary_prompt)
                 abstract_summaries.append(abstract_summary.content)
 
-            print("Abstract summaries: ", abstract_summaries)
             return {"summarize_abstract_info": abstract_summaries}
 
         else:
@@ -218,19 +219,36 @@ class ChatBotTools:
                     Summarize this section in {number_of_bullets} detailed and technical bullet points that is less than 2 sentences each. Do not include any other text than the bullet points."""
             
                     chunk_summary = call_llm(chunk_summary_prompt)
-                    print("Chunk summary: ", chunk_summary.content)
+                    # print("Chunk summary: ", chunk_summary.content)
                     chunk_summaries.append(chunk_summary.content)
 
                 # Combine chunk summaries
                 paper_summaries.append("\n\n".join(chunk_summaries))
 
-            print("Paper summaries: ", paper_summaries)
             return {"summarize_paper_info": paper_summaries}
 
         else:
             print("Not doing task 5!")
             return {"summarize_paper_info": []}
         
+    def compress_summaries_node(self, state: ChatbotState):
+        if state["new_tasks"][5]["task"] != None:
+            print("Doing task 6!")
+
+            compression_prompt = f"""
+            Here is the goal of the user: {state["user_request"].request}
+            Here is the summary of the abstract: {state["summarize_abstract_info"]}
+            Here is the summary of the paper: {state["summarize_paper_info"]}
+            Compress the summaries into a single summary in less than 1000 words. Use bullet points as much as possible. Be extremely technical, cogent, and convincing."""
+
+            compressed_summary = call_llm(compression_prompt)
+            print("Compressed summary: ", compressed_summary.content)
+            return {"compress_summaries_info": compressed_summary.content}
+
+        else:
+            print("Not doing task 6!")
+            return {"compress_summaries_info": []}
+
 # Nodes
 def review_tasks(state: ChatbotState):
     """Review the tasks and justification one by oneand make sure they are relevant to the user's request.
@@ -274,6 +292,7 @@ chatbot_builder.add_node("query_arxiv_api_abstracts", chatbot_tools.query_arxiv_
 chatbot_builder.add_node("query_arxiv_api_papers", chatbot_tools.query_arxiv_api_papers_node)
 chatbot_builder.add_node("summarize_abstract", chatbot_tools.summarize_abstract_node)
 chatbot_builder.add_node("summarize_paper", chatbot_tools.summarize_paper_node)
+chatbot_builder.add_node("compress_summaries", chatbot_tools.compress_summaries_node)
 
 chatbot_builder.add_edge(START, "review_tasks")
 chatbot_builder.add_edge("review_tasks", "check_local_vector_database")
@@ -281,7 +300,8 @@ chatbot_builder.add_edge("check_local_vector_database", "query_arxiv_api_abstrac
 chatbot_builder.add_edge("query_arxiv_api_abstracts", "query_arxiv_api_papers")
 chatbot_builder.add_edge("query_arxiv_api_papers", "summarize_abstract")
 chatbot_builder.add_edge("summarize_abstract", "summarize_paper")
-chatbot_builder.add_edge("summarize_paper", END)
+chatbot_builder.add_edge("summarize_paper", "compress_summaries")
+chatbot_builder.add_edge("compress_summaries", END)
 
 chatbot = chatbot_builder.compile()
 
