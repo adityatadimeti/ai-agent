@@ -85,7 +85,7 @@ class ChatbotState(TypedDict):
     arxiv_api_abstracts_info: List[Dict[str, str]]
     arxiv_api_papers_info: List[Dict[str, str]]
     summarize_abstract_info: List[Dict[str, str]]
-
+    summarize_paper_info: List[Dict[str, str]]
 
 class ChatBotTools:
     def __init__(self):
@@ -191,6 +191,46 @@ class ChatBotTools:
             print("Not doing task 4!")
             return {"summarize_abstract_info": []}
         
+    def summarize_paper_node(self, state: ChatbotState):
+        number_of_bullets = 10
+        chunk_size = 10000
+
+        if state["new_tasks"][3]["task"] != None:
+            print("Doing task 5!")
+
+            paper_summaries = []
+            for paper in state["arxiv_api_papers_info"]:
+                # Split abstract into 1000 word chunks
+                full_text = paper["full_text"]
+                words = full_text.split()
+                chunks = []
+                for i in range(0, len(words), chunk_size):
+                    chunk = " ".join(words[i:i + chunk_size])
+                    chunks.append(chunk)
+
+                # Summarize each chunk
+                chunk_summaries = []
+                for chunk in chunks:
+                    chunk_summary_prompt = f"""
+                    Here is the goal of the user: {state["user_request"].request}
+                    Here is the title of the paper: {paper["title"]}
+                    Here is a section of the paper: {chunk}
+                    Summarize this section in {number_of_bullets} detailed and technical bullet points that is less than 2 sentences each. Do not include any other text than the bullet points."""
+            
+                    chunk_summary = call_llm(chunk_summary_prompt)
+                    print("Chunk summary: ", chunk_summary.content)
+                    chunk_summaries.append(chunk_summary.content)
+
+                # Combine chunk summaries
+                paper_summaries.append("\n\n".join(chunk_summaries))
+
+            print("Paper summaries: ", paper_summaries)
+            return {"summarize_paper_info": paper_summaries}
+
+        else:
+            print("Not doing task 5!")
+            return {"summarize_paper_info": []}
+        
 # Nodes
 def review_tasks(state: ChatbotState):
     """Review the tasks and justification one by oneand make sure they are relevant to the user's request.
@@ -233,13 +273,15 @@ chatbot_builder.add_node("check_local_vector_database", chatbot_tools.check_loca
 chatbot_builder.add_node("query_arxiv_api_abstracts", chatbot_tools.query_arxiv_api_abstracts_node)
 chatbot_builder.add_node("query_arxiv_api_papers", chatbot_tools.query_arxiv_api_papers_node)
 chatbot_builder.add_node("summarize_abstract", chatbot_tools.summarize_abstract_node)
+chatbot_builder.add_node("summarize_paper", chatbot_tools.summarize_paper_node)
 
 chatbot_builder.add_edge(START, "review_tasks")
 chatbot_builder.add_edge("review_tasks", "check_local_vector_database")
 chatbot_builder.add_edge("check_local_vector_database", "query_arxiv_api_abstracts")
 chatbot_builder.add_edge("query_arxiv_api_abstracts", "query_arxiv_api_papers")
 chatbot_builder.add_edge("query_arxiv_api_papers", "summarize_abstract")
-chatbot_builder.add_edge("summarize_abstract", END)
+chatbot_builder.add_edge("summarize_abstract", "summarize_paper")
+chatbot_builder.add_edge("summarize_paper", END)
 
 chatbot = chatbot_builder.compile()
 
