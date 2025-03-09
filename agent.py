@@ -4,7 +4,7 @@ import discord
 import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
-from scheduler import run_v1
+from scheduler import run_v1, call_llm
 
 MISTRAL_MODEL = "mistral-large-latest"
 SYSTEM_PROMPT = "You are a helpful assistant. Summarize the following arxiv papers in a clear and concise way, focusing on the key findings and implications."
@@ -71,44 +71,16 @@ class MistralAgent:
 
     async def run(self, message: discord.Message):
         return run_v1(message.content)
-        # # Check if the message is asking about arxiv papers
-        # arxiv_keywords = [
-        #     "arxiv", "research paper", "scientific paper", "recent papers",
-        #     "latest research", "new papers", "academic papers"
-        # ]
-        
-        # message_lower = message.content.lower()
-        # is_arxiv_query = any(keyword in message_lower for keyword in arxiv_keywords)
-        
-        # if is_arxiv_query:
-        #     # Look for potential search terms
-        #     search_terms = []
-        #     for term in ["about", "on", "in", "regarding", "related to"]:
-        #         if term in message_lower:
-        #             # Get the text after the keyword
-        #             parts = message_lower.split(term, 1)
-        #             if len(parts) > 1:
-        #                 search_terms.append(parts[1].strip())
-            
-        #     # Use the first found search term if any exist
-        #     if search_terms:
-        #         papers_text = await self.fetch_arxiv_papers_by_topic(search_terms[0])
-        #     else:
-        #         papers_text = await self.fetch_arxiv_papers()
-            
-        #     # Create prompt for summarization
-        #     prompt = f"Please provide a very concise summary (maximum 1500 characters) of the following recent arxiv papers. Focus on the most important papers and their key findings:\n\n{papers_text}"
 
-        #     messages = [
-        #         {"role": "system", "content": SYSTEM_PROMPT},
-        #         {"role": "user", "content": prompt},
-        #     ]
-
-        #     response = await self.client.chat.complete_async(
-        #         model=MISTRAL_MODEL,
-        #         messages=messages,
-        #     )
-
-        #     return response.choices[0].message.content
-        
-        # return None
+    async def make_thread_name(self, message: discord.Message):
+        """Extract the title of the thread from the user's request"""
+        print("User's request: ", message.content)
+        title_of_thread_prompt = f"""
+            User's request: {message.content}
+            Extract the title of the thread from the user's request that is succinct, less than 7 words.
+            Only output the title of the thread, nothing else.
+        """
+        print("Title of thread prompt: ", title_of_thread_prompt)
+        title_of_thread = call_llm(title_of_thread_prompt)
+        print("Title of thread: ", title_of_thread.content)
+        return title_of_thread.content

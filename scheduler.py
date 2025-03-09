@@ -24,6 +24,13 @@ def call_llm(prompt: str):
         except Exception as e:
             time.sleep(1)
 
+def call_structured_llm(structured_llm, prompt: str):
+    while True:
+        try:
+            return structured_llm.invoke(prompt)
+        except Exception as e:
+            time.sleep(1)
+
 tasks_workflow = """
 The user is asking you to do research on a specific topic. We have outlined the exact workflow for you to complete below:
 
@@ -110,6 +117,7 @@ class ChatBotTools:
         print("Search term: ", search_term.content)
         return {"search_term": search_term.content}
     
+        
     def check_local_vector_database_node(self, state: ChatbotState):
         """Check the local vector database for relevance"""
         number_of_papers = 5
@@ -278,7 +286,7 @@ class ChatBotTools:
 
 # Nodes
 def review_tasks(state: ChatbotState):
-    """Review the tasks and justification one by oneand make sure they are relevant to the user's request.
+    """Review the tasks and justification one by one and make sure they are relevant to the user's request.
        If not relevant, remove the task and justification and give a reason for the removal.
        If need more tasks, add more tasks and give a justification for the new tasks."""
     new_tasks = []
@@ -293,7 +301,21 @@ def review_tasks(state: ChatbotState):
         )
         print("New task: ", new_task_msg.content)
         # Strip any markdown formatting and extract just the JSON content
-        content = new_task_msg.content
+        
+
+        double_check_prompt = f"""
+        User's request: {state["user_request"].request}
+        Task: {task}
+        Here is the task capabilities: {tasks_workflow}
+        Here is the new task: {new_task_msg.content}
+        Are you sure about this skipping this task in terms of completing the user's request? 
+        If you think we should do this task, return only the task in the JSON format: {{"task": "{task}", "justification": "Justification for the task"}}
+        If you are sure we should not do this task, return only return the task in the JSON format: {{"task": "None", "justification": "Reason for the removal"}}
+        """
+        double_check = call_llm(double_check_prompt)
+        print("Double check: ", double_check.content)
+        content = double_check.content
+
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0].strip()
         elif "```" in content:
@@ -311,7 +333,7 @@ def review_tasks(state: ChatbotState):
 
 def run_v1(prompt: str):
     structured_llm = llm.with_structured_output(UserRequest)
-    message = structured_llm.invoke(prompt)
+    message = call_structured_llm(structured_llm, prompt)
     chatbot_tools = ChatBotTools()
 
     chatbot_builder = StateGraph(ChatbotState)

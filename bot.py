@@ -54,19 +54,27 @@ async def on_message(message: discord.Message):
 
     # Process the message with the agent
     logger.info(f"Processing message from {message.author}: {message.content}")
+    # Make a thread name and check if thread exists
+    thread_name = await agent.make_thread_name(message)
+    
+    # Look for existing thread with same name
+    existing_thread = None
+    for thread in message.channel.threads:
+        if thread.name == thread_name:
+            existing_thread = thread
+            break
+    
+    # Use existing thread or create new one
+    if existing_thread:
+        thread = existing_thread
+        await message.reply(f"Let's discuss more in the previous thread {thread.mention}")
+    else:
+        thread = await message.create_thread(name=thread_name)
+
     response = await agent.run(message)
     
     # Only reply if there's a response
     if response:
-        # Create a thread with the original message content as title (truncate if too long)
-        thread_name = message.content[:100] + "..." if len(message.content) > 100 else message.content
-
-        # Make sure thread_name is valid
-        if not thread_name or len(thread_name) > 100:
-            # Use a default name or truncate the existing one
-            thread_name = "Discussion" if not thread_name else thread_name[:100]
-
-        thread = await message.create_thread(name=thread_name)
         
         # Split response into chunks 
         chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
