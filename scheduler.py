@@ -13,25 +13,26 @@ from vector_db.arxiv_vector_db import ArxivAbstractDB, ArxivFullTextDB, ArxivAbs
 from pydantic import BaseModel, Field
 from typing import List, Dict
 import time
+import json
 
 llm = ChatMistralAI(model="mistral-small-latest")
 
 tasks_workflow = """
 The user is asking you to do research on a specific topic. We have outlined the exact workflow for you to complete below:
 
-1. Name of Task: Query the Arxiv API for abstracts
-(Below is information about the task above, do not include it in the task description)
-- Inputs: Search term, number of papers to return
-- Outputs: List of abstracts
-- Prerequisites: None
-
-2. Name of Task: Query the Arxiv API for papers
+1. Name of Task: Check local vector database for relevance
 (Below is information about the task above, do not include it in the task description)
 - Inputs: Search term, number of papers to return
 - Outputs: List of papers
 - Prerequisites: None
 
-3. Name of Task: Check local vector database for relevance
+2. Name of Task: Query the Arxiv API for abstracts
+(Below is information about the task above, do not include it in the task description)
+- Inputs: Search term, number of papers to return
+- Outputs: List of abstracts
+- Prerequisites: None
+
+3. Name of Task: Query the Arxiv API for papers
 (Below is information about the task above, do not include it in the task description)
 - Inputs: Search term, number of papers to return
 - Outputs: List of papers
@@ -57,9 +58,9 @@ The user is asking you to do research on a specific topic. We have outlined the 
 """
 
 TASKS = [
+    "Check local vector database for relevance",
     "Query the Arxiv API for abstracts",
     "Query the Arxiv API for papers",
-    "Check local vector database for relevance",
     "Summarize the paper",
     "Summarize the abstract",
     "Get daily update of papers"
@@ -67,12 +68,55 @@ TASKS = [
 
 class UserRequest(BaseModel):
     request: str = Field(None, description="Request that is what the user is asking you to do")
-    tasks: List[str] = TASKS
+    search_term: str = Field(None, description="Search term for Arxiv for the query, based on the user's request")
 
 # Graph state
 class ChatbotState(TypedDict):
     user_request: UserRequest
     new_tasks: List[Dict[str, str]]
+    check_local_vector_database_info: List[Dict[str, str]]
+
+
+class ChatBotTools:
+    def __init__(self):
+        self.arxiv_abstract_db = ArxivAbstractDB()
+        self.arxiv_full_text_db = ArxivFullTextDB()
+        self.arxiv_abstract_fetcher = ArxivAbstractFetcher()
+        self.arxiv_full_text_fetcher = ArxivFullTextFetcher()
+
+    def check_local_vector_database(self, state: ChatbotState):
+        """Check the local vector database for relevance"""
+        number_of_papers = 5
+        
+        if state["new_tasks"][0]["task"] != None:
+            print("Doing task 1!")
+
+            _, is_relevant_abstract = self.arxiv_abstract_db.check_query_relevance(state["user_request"].search_term, number_of_papers)
+            _, is_relevant_full_text = self.arxiv_full_text_db.check_query_relevance(state["user_request"].search_term, number_of_papers)
+
+            print("Search term: ", state["user_request"].search_term)
+            print("Is relevant abstract: ", is_relevant_abstract)
+            print("Is relevant full text: ", is_relevant_full_text)
+            
+            if is_relevant_abstract and is_relevant_full_text:
+                return {"check_local_vector_database_info": []}
+            
+            abstracts = []
+            if is_relevant_abstract:
+                abstracts = self.arxiv_abstract_db.query(state["user_request"].search_term, number_of_papers)
+
+            full_texts = []
+            if is_relevant_full_text:
+                full_texts = self.arxiv_full_text_db.query(state["user_request"].search_term, number_of_papers)
+
+            return {"check_local_vector_database_info": abstracts + full_texts}
+
+        else:
+            print("Not doing task 1!")
+            return {"check_local_vector_database_info": []}
+
+        return
+        # return arxiv_abstract_db.search(search_term, number_of_papers)
 
 # Nodes
 def review_tasks(state: ChatbotState):
@@ -80,8 +124,7 @@ def review_tasks(state: ChatbotState):
        If not relevant, remove the task and justification and give a reason for the removal.
        If need more tasks, add more tasks and give a justification for the new tasks."""
     new_tasks = []
-    new_justifications = []
-    for task in zip(state["user_request"].tasks):
+    for task in TASKS:
         print("Task: ", task)
         new_task_msg = llm.invoke(
             f"""User's request: {state["user_request"].request}
@@ -91,16 +134,33 @@ def review_tasks(state: ChatbotState):
                 If not relevant, return only in the JSON format: {{"task": "None", "justification": "Reason for the removal"}}"""
         )
         print("New task: ", new_task_msg.content)
+        # Strip any markdown formatting and extract just the JSON content
+        content = new_task_msg.content
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].strip()
+        try:
+            task_json = json.loads(content)
+            new_tasks.append(task_json)
+        except json.JSONDecodeError as e:
+            print(f"Error parsing JSON: {e}")
+            # Skip invalid JSON
+            continue
         time.sleep(1)
     return {"new_tasks": new_tasks}
 
 structured_llm = llm.with_structured_output(UserRequest)
-message = structured_llm.invoke("I am researching on the topic of FlashAttention and softmax of the KV cache. Can you help me answer some questions about it?")
+message = structured_llm.invoke("I am benchmarking my current model on IMAGE-net. Can you find me the most relevant papers that also benchmarked on IMAGE-net?")
+chatbot_tools = ChatBotTools()
 
 chatbot_builder = StateGraph(ChatbotState)
 chatbot_builder.add_node("review_tasks", review_tasks)
+chatbot_builder.add_node("check_local_vector_database", chatbot_tools.check_local_vector_database)
+
 chatbot_builder.add_edge(START, "review_tasks")
-chatbot_builder.add_edge("review_tasks", END)
+chatbot_builder.add_edge("review_tasks", "check_local_vector_database")
+chatbot_builder.add_edge("check_local_vector_database", END)
 
 chatbot = chatbot_builder.compile()
 
