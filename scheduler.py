@@ -76,10 +76,10 @@ TASKS = [
 
 class UserRequest(BaseModel):
     request: str = Field(None, description="Request that is what the user is asking you to do")
-    search_term: str = Field(None, description="Search term for Arxiv for the query, based on the user's request")
 
 # Graph state
 class ChatbotState(TypedDict):
+    search_term: str
     user_request: UserRequest
     new_tasks: List[Dict[str, str]]
     check_local_vector_database_info: List[Dict[str, str]]
@@ -96,6 +96,19 @@ class ChatBotTools:
         self.arxiv_abstract_fetcher = ArxivAbstractFetcher()
         self.arxiv_full_text_fetcher = ArxivFullTextFetcher()
 
+    def extract_search_term_node(self, state: ChatbotState):
+        """Extract the search term from the user's request"""
+        print("User's request: ", state)
+        search_term_prompt = f"""
+            User's request: {state["user_request"].request}
+            Extract the one search term phrase from the user's request to search Arxiv to get relevant papers.
+            Only output the search term, nothing else.
+        """
+        print("Search term prompt: ", search_term_prompt)
+        search_term = call_llm(search_term_prompt)
+        print("Search term: ", search_term.content)
+        return {"search_term": search_term.content}
+    
     def check_local_vector_database_node(self, state: ChatbotState):
         """Check the local vector database for relevance"""
         number_of_papers = 5
@@ -103,10 +116,11 @@ class ChatBotTools:
         if state["new_tasks"][0]["task"] != None:
             print("Doing task 1!")
 
+            print("User's request: ", state)
             embellished_search_term = call_llm(
                 f"""
                 User's request: {state["user_request"].request}
-                Search term: {state["user_request"].search_term}
+                Search term: {state["search_term"]}
                 Given this short search term, write a short abstract (< 200 words) about it so that we can embed the paragraph and search our vector database of abstract s-- In other words, you are embelishing the query for better results in vector search"
                 """
             )
@@ -124,11 +138,11 @@ class ChatBotTools:
             
             abstracts = []
             if is_relevant_abstract:
-                abstracts = self.arxiv_abstract_db.query(state["user_request"].search_term, number_of_papers)
+                abstracts = self.arxiv_abstract_db.query(state["search_term"], number_of_papers)
 
             full_texts = []
             if is_relevant_full_text:
-                full_texts = self.arxiv_full_text_db.query(state["user_request"].search_term, number_of_papers)
+                full_texts = self.arxiv_full_text_db.query(state["search_term"], number_of_papers)
 
             return {"check_local_vector_database_info": abstracts + full_texts}
 
@@ -143,7 +157,7 @@ class ChatBotTools:
         if state["new_tasks"][1]["task"] != None and state["check_local_vector_database_info"] == []:
             print("Doing task 2!")
 
-            abstracts = self.arxiv_abstract_fetcher.fetch_arxiv_abstracts(state["user_request"].search_term, number_of_papers)
+            abstracts = self.arxiv_abstract_fetcher.fetch_arxiv_abstracts(state["search_term"], number_of_papers)
             print("Abstracts: ", abstracts)
             self.arxiv_abstract_db.add_abstracts(abstracts)
 
@@ -161,7 +175,7 @@ class ChatBotTools:
         if state["new_tasks"][2]["task"] != None and state["check_local_vector_database_info"] == []:
             print("Doing task 3!")
 
-            papers = self.arxiv_full_text_fetcher.fetch_arxiv_full_text_from_query(state["user_request"].search_term, number_of_papers)
+            papers = self.arxiv_full_text_fetcher.fetch_arxiv_full_text_from_query(state["search_term"], number_of_papers)
             self.arxiv_full_text_db.add_papers(papers)
 
             return {"arxiv_api_papers_info": papers}
@@ -281,29 +295,37 @@ def review_tasks(state: ChatbotState):
         time.sleep(1)
     return {"new_tasks": new_tasks}
 
-structured_llm = llm.with_structured_output(UserRequest)
-message = structured_llm.invoke("I am benchmarking my current model on IMAGE-net. Can you find me the most relevant papers that also benchmarked on IMAGE-net?")
-chatbot_tools = ChatBotTools()
 
-chatbot_builder = StateGraph(ChatbotState)
-chatbot_builder.add_node("review_tasks", review_tasks)
-chatbot_builder.add_node("check_local_vector_database", chatbot_tools.check_local_vector_database_node)
-chatbot_builder.add_node("query_arxiv_api_abstracts", chatbot_tools.query_arxiv_api_abstracts_node)
-chatbot_builder.add_node("query_arxiv_api_papers", chatbot_tools.query_arxiv_api_papers_node)
-chatbot_builder.add_node("summarize_abstract", chatbot_tools.summarize_abstract_node)
-chatbot_builder.add_node("summarize_paper", chatbot_tools.summarize_paper_node)
-chatbot_builder.add_node("compress_summaries", chatbot_tools.compress_summaries_node)
+def run_v1(prompt: str):
+    structured_llm = llm.with_structured_output(UserRequest)
+    message = structured_llm.invoke(prompt)
+    chatbot_tools = ChatBotTools()
 
-chatbot_builder.add_edge(START, "review_tasks")
-chatbot_builder.add_edge("review_tasks", "check_local_vector_database")
-chatbot_builder.add_edge("check_local_vector_database", "query_arxiv_api_abstracts")
-chatbot_builder.add_edge("query_arxiv_api_abstracts", "query_arxiv_api_papers")
-chatbot_builder.add_edge("query_arxiv_api_papers", "summarize_abstract")
-chatbot_builder.add_edge("summarize_abstract", "summarize_paper")
-chatbot_builder.add_edge("summarize_paper", "compress_summaries")
-chatbot_builder.add_edge("compress_summaries", END)
+    chatbot_builder = StateGraph(ChatbotState)
+    chatbot_builder.add_node("extract_search_term", chatbot_tools.extract_search_term_node)
+    chatbot_builder.add_node("review_tasks", review_tasks)
+    chatbot_builder.add_node("check_local_vector_database", chatbot_tools.check_local_vector_database_node)
+    chatbot_builder.add_node("query_arxiv_api_abstracts", chatbot_tools.query_arxiv_api_abstracts_node)
+    chatbot_builder.add_node("query_arxiv_api_papers", chatbot_tools.query_arxiv_api_papers_node)
+    chatbot_builder.add_node("summarize_abstract", chatbot_tools.summarize_abstract_node)
+    chatbot_builder.add_node("summarize_paper", chatbot_tools.summarize_paper_node)
+    chatbot_builder.add_node("compress_summaries", chatbot_tools.compress_summaries_node)
 
-chatbot = chatbot_builder.compile()
+    chatbot_builder.add_edge(START, "extract_search_term")
+    chatbot_builder.add_edge("extract_search_term", "review_tasks")
+    chatbot_builder.add_edge("review_tasks", "check_local_vector_database")
+    chatbot_builder.add_edge("check_local_vector_database", "query_arxiv_api_abstracts")
+    chatbot_builder.add_edge("query_arxiv_api_abstracts", "query_arxiv_api_papers")
+    chatbot_builder.add_edge("query_arxiv_api_papers", "summarize_abstract")
+    chatbot_builder.add_edge("summarize_abstract", "summarize_paper")
+    chatbot_builder.add_edge("summarize_paper", "compress_summaries")
+    chatbot_builder.add_edge("compress_summaries", END)
 
-state = chatbot.invoke({"user_request": message})
+    chatbot = chatbot_builder.compile()
+
+    state = chatbot.invoke({"user_request": message})
+    return state["compress_summaries_info"]
+
+
+# run_v1("I am reading a paper called Restructuring Vector Quantization with the Rotation Trick. Can you help me understand it?")
 # print(state)

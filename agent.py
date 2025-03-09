@@ -4,6 +4,7 @@ import discord
 import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
+from scheduler import run_v1
 
 MISTRAL_MODEL = "mistral-large-latest"
 SYSTEM_PROMPT = "You are a helpful assistant. Summarize the following arxiv papers in a clear and concise way, focusing on the key findings and implications."
@@ -69,44 +70,45 @@ class MistralAgent:
         return combined_text
 
     async def run(self, message: discord.Message):
-        # Check if the message is asking about arxiv papers
-        arxiv_keywords = [
-            "arxiv", "research paper", "scientific paper", "recent papers",
-            "latest research", "new papers", "academic papers"
-        ]
+        return run_v1(message.content)
+        # # Check if the message is asking about arxiv papers
+        # arxiv_keywords = [
+        #     "arxiv", "research paper", "scientific paper", "recent papers",
+        #     "latest research", "new papers", "academic papers"
+        # ]
         
-        message_lower = message.content.lower()
-        is_arxiv_query = any(keyword in message_lower for keyword in arxiv_keywords)
+        # message_lower = message.content.lower()
+        # is_arxiv_query = any(keyword in message_lower for keyword in arxiv_keywords)
         
-        if is_arxiv_query:
-            # Look for potential search terms
-            search_terms = []
-            for term in ["about", "on", "in", "regarding", "related to"]:
-                if term in message_lower:
-                    # Get the text after the keyword
-                    parts = message_lower.split(term, 1)
-                    if len(parts) > 1:
-                        search_terms.append(parts[1].strip())
+        # if is_arxiv_query:
+        #     # Look for potential search terms
+        #     search_terms = []
+        #     for term in ["about", "on", "in", "regarding", "related to"]:
+        #         if term in message_lower:
+        #             # Get the text after the keyword
+        #             parts = message_lower.split(term, 1)
+        #             if len(parts) > 1:
+        #                 search_terms.append(parts[1].strip())
             
-            # Use the first found search term if any exist
-            if search_terms:
-                papers_text = await self.fetch_arxiv_papers_by_topic(search_terms[0])
-            else:
-                papers_text = await self.fetch_arxiv_papers()
+        #     # Use the first found search term if any exist
+        #     if search_terms:
+        #         papers_text = await self.fetch_arxiv_papers_by_topic(search_terms[0])
+        #     else:
+        #         papers_text = await self.fetch_arxiv_papers()
             
-            # Create prompt for summarization
-            prompt = f"Please provide a very concise summary (maximum 1500 characters) of the following recent arxiv papers. Focus on the most important papers and their key findings:\n\n{papers_text}"
+        #     # Create prompt for summarization
+        #     prompt = f"Please provide a very concise summary (maximum 1500 characters) of the following recent arxiv papers. Focus on the most important papers and their key findings:\n\n{papers_text}"
 
-            messages = [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ]
+        #     messages = [
+        #         {"role": "system", "content": SYSTEM_PROMPT},
+        #         {"role": "user", "content": prompt},
+        #     ]
 
-            response = await self.client.chat.complete_async(
-                model=MISTRAL_MODEL,
-                messages=messages,
-            )
+        #     response = await self.client.chat.complete_async(
+        #         model=MISTRAL_MODEL,
+        #         messages=messages,
+        #     )
 
-            return response.choices[0].message.content
+        #     return response.choices[0].message.content
         
-        return None
+        # return None

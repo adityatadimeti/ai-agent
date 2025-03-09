@@ -60,6 +60,12 @@ async def on_message(message: discord.Message):
     if response:
         # Create a thread with the original message content as title (truncate if too long)
         thread_name = message.content[:100] + "..." if len(message.content) > 100 else message.content
+
+        # Make sure thread_name is valid
+        if not thread_name or len(thread_name) > 100:
+            # Use a default name or truncate the existing one
+            thread_name = "Discussion" if not thread_name else thread_name[:100]
+
         thread = await message.create_thread(name=thread_name)
         
         # Split response into chunks 
