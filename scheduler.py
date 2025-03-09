@@ -88,6 +88,7 @@ class ChatbotState(TypedDict):
     summarize_abstract_info: List[Dict[str, str]]
     summarize_paper_info: List[Dict[str, str]]
     compress_summaries_info: List[Dict[str, str]]
+    final_task_info: List[Dict[str, str]]
 
 class ChatBotTools:
     def __init__(self):
@@ -113,7 +114,7 @@ class ChatBotTools:
         """Check the local vector database for relevance"""
         number_of_papers = 5
         
-        if state["new_tasks"][0]["task"] != None:
+        if state["new_tasks"][0]["task"] != "None":
             print("Doing task 1!")
 
             print("User's request: ", state)
@@ -154,7 +155,7 @@ class ChatBotTools:
         """Check the Arxiv API for relevance"""
         number_of_papers = 5
         
-        if state["new_tasks"][1]["task"] != None and state["check_local_vector_database_info"] == []:
+        if state["new_tasks"][1]["task"] != "None" and state["check_local_vector_database_info"] == []:
             print("Doing task 2!")
 
             abstracts = self.arxiv_abstract_fetcher.fetch_arxiv_abstracts(state["search_term"], number_of_papers)
@@ -172,7 +173,7 @@ class ChatBotTools:
         number_of_papers = 5
         
         print("Trying task 3!")
-        if state["new_tasks"][2]["task"] != None and state["check_local_vector_database_info"] == []:
+        if state["new_tasks"][2]["task"] != "None"and state["check_local_vector_database_info"] == []:
             print("Doing task 3!")
 
             papers = self.arxiv_full_text_fetcher.fetch_arxiv_full_text_from_query(state["search_term"], number_of_papers)
@@ -187,7 +188,7 @@ class ChatBotTools:
     def summarize_abstract_node(self, state: ChatbotState):
         number_of_bullets = 5
 
-        if state["new_tasks"][3]["task"] != None:
+        if state["new_tasks"][3]["task"] != "None":
             print("Doing task 4!")
 
             abstract_summaries = []
@@ -210,7 +211,7 @@ class ChatBotTools:
         number_of_bullets = 10
         chunk_size = 10000
 
-        if state["new_tasks"][3]["task"] != None:
+        if state["new_tasks"][4]["task"] != "None":
             print("Doing task 5!")
 
             paper_summaries = []
@@ -246,7 +247,7 @@ class ChatBotTools:
             return {"summarize_paper_info": []}
         
     def compress_summaries_node(self, state: ChatbotState):
-        if state["new_tasks"][5]["task"] != None:
+        if state["new_tasks"][5]["task"] != "None":
             print("Doing task 6!")
 
             compression_prompt = f"""
@@ -262,6 +263,18 @@ class ChatBotTools:
         else:
             print("Not doing task 6!")
             return {"compress_summaries_info": []}
+        
+    def final_task_node(self, state: ChatbotState):
+        if state["new_tasks"][5]["task"] == "None":
+            print("Doing task 7!")
+            print("User's request: ", state["user_request"].request)
+            response = call_llm(state["user_request"].request)
+            print("Response: ", response.content)
+            return {"final_task_info": response.content}
+
+        else:
+            print("Not doing task 7!")
+            return {"final_task_info": state["compress_summaries_info"]}
 
 # Nodes
 def review_tasks(state: ChatbotState):
@@ -310,6 +323,7 @@ def run_v1(prompt: str):
     chatbot_builder.add_node("summarize_abstract", chatbot_tools.summarize_abstract_node)
     chatbot_builder.add_node("summarize_paper", chatbot_tools.summarize_paper_node)
     chatbot_builder.add_node("compress_summaries", chatbot_tools.compress_summaries_node)
+    chatbot_builder.add_node("final_task", chatbot_tools.final_task_node)
 
     chatbot_builder.add_edge(START, "extract_search_term")
     chatbot_builder.add_edge("extract_search_term", "review_tasks")
@@ -319,12 +333,13 @@ def run_v1(prompt: str):
     chatbot_builder.add_edge("query_arxiv_api_papers", "summarize_abstract")
     chatbot_builder.add_edge("summarize_abstract", "summarize_paper")
     chatbot_builder.add_edge("summarize_paper", "compress_summaries")
-    chatbot_builder.add_edge("compress_summaries", END)
+    chatbot_builder.add_edge("compress_summaries", "final_task")
+    chatbot_builder.add_edge("final_task", END)
 
     chatbot = chatbot_builder.compile()
 
     state = chatbot.invoke({"user_request": message})
-    return state["compress_summaries_info"]
+    return state["final_task_info"]
 
 
 # run_v1("I am reading a paper called Restructuring Vector Quantization with the Rotation Trick. Can you help me understand it?")
