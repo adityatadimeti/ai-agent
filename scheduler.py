@@ -83,6 +83,7 @@ class ChatbotState(TypedDict):
     new_tasks: List[Dict[str, str]]
     check_local_vector_database_info: List[Dict[str, str]]
     arxiv_api_abstracts_info: List[Dict[str, str]]
+    arxiv_api_papers_info: List[Dict[str, str]]
 
 
 class ChatBotTools:
@@ -148,6 +149,22 @@ class ChatBotTools:
         else:
             print("Not doing task 2!")
             return {"arxiv_api_abstracts_info": []}
+        
+    def query_arxiv_api_papers_node(self, state: ChatbotState):
+        """Check the Arxiv API for relevance"""
+        number_of_papers = 5
+        
+        if state["new_tasks"][1]["task"] != None and state["check_local_vector_database_info"] == []:
+            print("Doing task 3!")
+
+            papers = self.arxiv_full_text_fetcher.fetch_arxiv_full_text_from_query(state["user_request"].search_term, number_of_papers)
+            self.arxiv_full_text_db.add_papers(papers)
+
+            return {"arxiv_api_papers_info": papers}
+
+        else:
+            print("Not doing task 3!")
+            return {"arxiv_api_papers_info": []}
 
 
 # Nodes
@@ -190,6 +207,7 @@ chatbot_builder = StateGraph(ChatbotState)
 chatbot_builder.add_node("review_tasks", review_tasks)
 chatbot_builder.add_node("check_local_vector_database", chatbot_tools.check_local_vector_database_node)
 chatbot_builder.add_node("query_arxiv_api_abstracts", chatbot_tools.query_arxiv_api_abstracts_node)
+chatbot_builder.add_node("query_arxiv_api_papers", chatbot_tools.query_arxiv_api_papers_node)
 
 chatbot_builder.add_edge(START, "review_tasks")
 chatbot_builder.add_edge("review_tasks", "check_local_vector_database")

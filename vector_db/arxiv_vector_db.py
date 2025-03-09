@@ -4,7 +4,7 @@ import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 import os
-from mistral_embedding_function import MistralEmbeddingFunction
+from .mistral_embedding_function import MistralEmbeddingFunction
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from typing import List, Dict
 import time
@@ -309,8 +309,8 @@ class ArxivFullTextDB:
             List[Dict]: List of chunks with metadata
         """
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
+            chunk_size=500,
+            chunk_overlap=100,
             length_function=len,
             separators=["\n\n", "\n", " ", ""] # Try to split on paragraph breaks first
         )
@@ -411,24 +411,25 @@ class ArxivFullTextDB:
             # Add documents in batches
             batch_size = 16
             for i in range(0, len(documents), batch_size):
+                print(f"Adding {len(documents[i:i+batch_size])} chunks")
                 end_idx = min(i + batch_size, len(documents))
-                try:
-                    self.collection.add(
-                        documents=documents[i:end_idx],
-                        metadatas=metadatas[i:end_idx],
-                        ids=ids[i:end_idx]
-                    )
-                except Exception as e:
-                    if "rate limit" in str(e).lower():
-                        print("Rate limit hit, waiting 2 seconds...")
-                        time.sleep(2)
-                        self.collection.add(
-                            documents=documents[i:end_idx],
-                            metadatas=metadatas[i:end_idx],
-                            ids=ids[i:end_idx]
-                        )
-                    else:
-                        raise e
+                self.call_embeddings_api(documents[i:end_idx], metadatas[i:end_idx], ids[i:end_idx])
+
+    def call_embeddings_api(self, documents: List[str], metadatas: List[Dict], ids: List[str]):
+        while True:
+            try:
+                self.collection.add(
+                    documents=documents,
+                    metadatas=metadatas,
+                    ids=ids
+                )
+                break
+            except Exception as e:
+                if "rate limit" in str(e).lower():
+                    print("Rate limit hit, waiting 2 seconds...")
+                    time.sleep(2)
+                else:
+                    raise e
 
     def query(self, query_text: str, top_k: int = 5, filter_dict: dict = None) -> List[Dict]:
         """
@@ -576,12 +577,14 @@ class ArxivFullTextFetcher:
 def main():
     arxiv_abstract_db = ArxivAbstractDB()
     arxiv_full_text_db = ArxivFullTextDB()
+
+    prompt = "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks in an encoder-decoder configuration. The best performing models also connect the encoder and decoder through an attention mechanism. We propose a new simple network architecture,"
     
     # Fetch and add abstracts
-    result = arxiv_full_text_db.check_query_relevance("Attention is all you need")
-    result_from_query = arxiv_full_text_db.query("Attention is all you need", top_k=1)
+    result = arxiv_abstract_db.check_query_relevance(prompt)
+    result_from_query = arxiv_abstract_db.query(prompt, top_k=2)
     print(result)
-    # print(result_from_query)
+    print(result_from_query)
 
 if __name__ == "__main__":
     main()
