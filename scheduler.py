@@ -17,6 +17,13 @@ import json
 
 llm = ChatMistralAI(model="mistral-small-latest")
 
+def call_llm(prompt: str):
+    while True:
+        try:
+            return llm.invoke(prompt)
+        except Exception as e:
+            time.sleep(1)
+
 tasks_workflow = """
 The user is asking you to do research on a specific topic. We have outlined the exact workflow for you to complete below:
 
@@ -75,6 +82,7 @@ class ChatbotState(TypedDict):
     user_request: UserRequest
     new_tasks: List[Dict[str, str]]
     check_local_vector_database_info: List[Dict[str, str]]
+    arxiv_api_abstracts_info: List[Dict[str, str]]
 
 
 class ChatBotTools:
@@ -84,17 +92,26 @@ class ChatBotTools:
         self.arxiv_abstract_fetcher = ArxivAbstractFetcher()
         self.arxiv_full_text_fetcher = ArxivFullTextFetcher()
 
-    def check_local_vector_database(self, state: ChatbotState):
+    def check_local_vector_database_node(self, state: ChatbotState):
         """Check the local vector database for relevance"""
         number_of_papers = 5
         
         if state["new_tasks"][0]["task"] != None:
             print("Doing task 1!")
 
-            _, is_relevant_abstract = self.arxiv_abstract_db.check_query_relevance(state["user_request"].search_term, number_of_papers)
-            _, is_relevant_full_text = self.arxiv_full_text_db.check_query_relevance(state["user_request"].search_term, number_of_papers)
+            embellished_search_term = call_llm(
+                f"""
+                User's request: {state["user_request"].request}
+                Search term: {state["user_request"].search_term}
+                Given this short search term, write a short abstract (< 200 words) about it so that we can embed the paragraph and search our vector database of abstract s-- In other words, you are embelishing the query for better results in vector search"
+                """
+            )
 
-            print("Search term: ", state["user_request"].search_term)
+            print("Embellished search term: ", embellished_search_term)
+
+            _, is_relevant_abstract = self.arxiv_abstract_db.check_query_relevance(embellished_search_term.content, number_of_papers)
+            _, is_relevant_full_text = self.arxiv_full_text_db.check_query_relevance(embellished_search_term.content, number_of_papers)
+
             print("Is relevant abstract: ", is_relevant_abstract)
             print("Is relevant full text: ", is_relevant_full_text)
             
@@ -114,9 +131,24 @@ class ChatBotTools:
         else:
             print("Not doing task 1!")
             return {"check_local_vector_database_info": []}
+        
+    def query_arxiv_api_abstracts_node(self, state: ChatbotState):
+        """Check the Arxiv API for relevance"""
+        number_of_papers = 5
+        
+        if state["new_tasks"][1]["task"] != None and state["check_local_vector_database_info"] == []:
+            print("Doing task 2!")
 
-        return
-        # return arxiv_abstract_db.search(search_term, number_of_papers)
+            abstracts = self.arxiv_abstract_fetcher.fetch_arxiv_abstracts(state["user_request"].search_term, number_of_papers)
+            print("Abstracts: ", abstracts)
+            self.arxiv_abstract_db.add_abstracts(abstracts)
+
+            return {"arxiv_api_abstracts_info": abstracts}
+
+        else:
+            print("Not doing task 2!")
+            return {"arxiv_api_abstracts_info": []}
+
 
 # Nodes
 def review_tasks(state: ChatbotState):
@@ -126,11 +158,11 @@ def review_tasks(state: ChatbotState):
     new_tasks = []
     for task in TASKS:
         print("Task: ", task)
-        new_task_msg = llm.invoke(
+        new_task_msg =  call_llm(
             f"""User's request: {state["user_request"].request}
                 Review the task ({task}) and make sure they are relevant to the user's request. 
                 Here are the task capabilities: {tasks_workflow}
-                If relevant, return the task, return only the task in JSON format: {{"task": "Task name", "justification": "Justification for the task"}}
+                If relevant, return the task, return only the task in JSON format: {{"task": "{task}", "justification": "Justification for the task"}}
                 If not relevant, return only in the JSON format: {{"task": "None", "justification": "Reason for the removal"}}"""
         )
         print("New task: ", new_task_msg.content)
@@ -156,11 +188,13 @@ chatbot_tools = ChatBotTools()
 
 chatbot_builder = StateGraph(ChatbotState)
 chatbot_builder.add_node("review_tasks", review_tasks)
-chatbot_builder.add_node("check_local_vector_database", chatbot_tools.check_local_vector_database)
+chatbot_builder.add_node("check_local_vector_database", chatbot_tools.check_local_vector_database_node)
+chatbot_builder.add_node("query_arxiv_api_abstracts", chatbot_tools.query_arxiv_api_abstracts_node)
 
 chatbot_builder.add_edge(START, "review_tasks")
 chatbot_builder.add_edge("review_tasks", "check_local_vector_database")
-chatbot_builder.add_edge("check_local_vector_database", END)
+chatbot_builder.add_edge("check_local_vector_database", "query_arxiv_api_abstracts")
+chatbot_builder.add_edge("query_arxiv_api_abstracts", END)
 
 chatbot = chatbot_builder.compile()
 
