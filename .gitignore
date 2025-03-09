@@ -14,4 +14,7 @@ wheels/
 .example.env
 
 # ChromaDB
-chroma_db/
+chroma*_db
+
+# Archived files
+*/archive.py
