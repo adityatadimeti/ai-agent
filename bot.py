@@ -5,6 +5,7 @@ import logging
 from discord.ext import commands
 from dotenv import load_dotenv
 from agent import MistralAgent
+from profiles import get_user
 
 PREFIX = "!"
 
@@ -51,7 +52,10 @@ async def on_message(message: discord.Message):
     # Ignore messages from self or other bots to prevent infinite loops.
     if message.author.bot or message.content.startswith("!"):
         return
-
+    
+    # Process User
+    user = get_user(message.author, message)
+    
     # Process the message with the agent
     logger.info(f"Processing message from {message.author}: {message.content}")
     # Make a thread name and check if thread exists
