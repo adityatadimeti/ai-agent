@@ -75,7 +75,7 @@ async def on_message(message: discord.Message):
 
     # Process the message with the agent
     logger.info(f"Processing message from {message.author}: {message.content}")
-    response = await agent.run(message)
+    response = await agent.run(message, user)
     
     # Only create thread and reply if there's a response
     if response:

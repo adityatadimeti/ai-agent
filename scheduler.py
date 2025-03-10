@@ -12,6 +12,7 @@ from langchain_core.tools import tool
 from vector_db.arxiv_vector_db import ArxivAbstractDB, ArxivFullTextDB, ArxivAbstractFetcher, ArxivFullTextFetcher
 from pydantic import BaseModel, Field
 from typing import List, Dict
+from user_profiles import *
 import time
 import json
 
@@ -340,8 +341,17 @@ def review_tasks(state: ChatbotState):
         time.sleep(1)
     return {"new_tasks": new_tasks}
 
+def update_history(prompt, user):
+    interaction = Interaction(
+        InteractionType.USER, 
+        prompt,
+        
+    )
 
-def run_v1(prompt: str):
+
+
+def run_v1(prompt: str, user: User):
+    update_history(prompt, user)
     structured_llm = llm.with_structured_output(UserRequest)
     message = call_structured_llm(structured_llm, prompt)
     chatbot_tools = ChatBotTools()

@@ -44,16 +44,16 @@ class User:
         self.data_path = os.path.join(USER_DIR, user_id)
         
         # Check if files exist before trying to read them
-        profile_path = os.path.join(self.data_path, "profile.txt")
-        memory_path = os.path.join(self.data_path, "memory.json")
+        self.profile_path = os.path.join(self.data_path, "profile.txt")
+        self.memory_path = os.path.join(self.data_path, "memory.json")
         
-        if os.path.exists(profile_path):
-            self.profile = open(profile_path, "r").read()
+        if os.path.exists(self.profile_path):
+            self.profile = open(self.profile_path, "r").read()
         else:
             self.profile = ""
             
-        if os.path.exists(memory_path):
-            self.context_dict = json.load(open(memory_path))
+        if os.path.exists(self.memory_path):
+            self.context_dict = json.load(open(self.memory_path))
         else:
             self.context_dict = {
                 'message_history': [],
@@ -79,6 +79,11 @@ class User:
             self.context_dict['num_token'] -= out
         self.context_dict['message_history'].append(new_interaction)
         self.context_string = self.context_to_string
+
+    def write_to_disk(self):
+        with open(os.path.join(self.memory_path, "memory.json"), "w") as f:
+            json.dump(self.context_dict, f)
+
         
 
 async def create_profile(user: discord.Member, message: discord.Message, bot: commands.Bot) -> User:

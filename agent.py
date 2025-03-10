@@ -5,6 +5,7 @@ import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from scheduler import run_v1, call_llm
+from user_profiles import *
 
 MISTRAL_MODEL = "mistral-large-latest"
 SYSTEM_PROMPT = "You are a helpful assistant. Summarize the following arxiv papers in a clear and concise way, focusing on the key findings and implications."
@@ -69,8 +70,8 @@ class MistralAgent:
 
         return combined_text
 
-    async def run(self, message: discord.Message):
-        return run_v1(message.content)
+    async def run(self, message: discord.Message, user: User):
+        return run_v1(message.content, user)
 
     async def make_thread_name(self, message: discord.Message):
         """Extract the title of the thread from the user's request"""
