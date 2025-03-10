@@ -54,7 +54,7 @@ async def on_message(message: discord.Message):
         return
     
     # Process User
-    user = await get_user_profile(message.author, message)
+    user = await get_user_profile(message.author, message, bot)
     if not user:
         return
     

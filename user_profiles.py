@@ -42,15 +42,31 @@ class User:
         self.user_id = user_id
         self.profile_complete = profile_complete
         self.data_path = os.path.join(USER_DIR, user_id)
-        self.profile = open(self.data_path, "profile.txt")
-        self.context_dict = json.load(open("data.json"))
+        
+        # Check if files exist before trying to read them
+        profile_path = os.path.join(self.data_path, "profile.txt")
+        memory_path = os.path.join(self.data_path, "memory.json")
+        
+        if os.path.exists(profile_path):
+            self.profile = open(profile_path, "r").read()
+        else:
+            self.profile = ""
+            
+        if os.path.exists(memory_path):
+            self.context_dict = json.load(open(memory_path))
+        else:
+            self.context_dict = {
+                'message_history': [],
+                'num_token': 0
+            }
+            
         self.context_string = self.context_to_string()
 
     def context_to_string(self):
         context_string = "\nBEGINNING OF CONTEXT WITH USER\n"
         context_string += "(NOTE THAT THIS IS LIMITED CONTEXT!)\n"
-
-        for interaction in self.context_dict:
+        print(self.context_dict)
+        for interaction in self.context_dict['message_history']:
             context_string += f"{interaction.interaction_type}: \n {interaction.text} \n\n"
 
         return context_string
@@ -98,6 +114,7 @@ async def create_profile(user: discord.Member, message: discord.Message, bot: co
     while True:
         try:
             blurb_msg = await bot.wait_for('message', check=check, timeout=120)
+            print("Checking blurb message")
             blurb = blurb_msg.content
 
             await thread.send(
@@ -118,15 +135,19 @@ async def create_profile(user: discord.Member, message: discord.Message, bot: co
             # Save the name (for example, in a file; you can expand this as needed)
             with open(os.path.join(user_data, "profile.txt"), "w") as f:
                 f.write(blurb)
+                
+            memory_data = {   
+                'message_history': [],
+                'num_token': 0
+            }
             with open(os.path.join(user_data, "memory.json"), "w") as f:
-                f.write(
-                    {   
-                        'message_history': [],
-                        'num_token': 0
-                    }
-                )
+                json.dump(memory_data, f)
 
             await thread.send(f"Thanks! Your profile is now set up. Now going back to your query!")
+            
+            # Return a user object indicating the profile is complete
+            return User(user_id, profile_complete=True)
+            
         except Exception as e:
             await thread.send(
             """
@@ -134,9 +155,6 @@ async def create_profile(user: discord.Member, message: discord.Message, bot: co
             """)
             # You might want to handle cleanup or retries here.
             return None
-
-        # Return a user object indicating the profile is complete.
-        return User(user_id, profile_complete=True)
 
 
 async def get_user_profile(user: discord.Member, message: discord.Message, bot: commands.Bot) -> User:
