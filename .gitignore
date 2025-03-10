@@ -11,3 +11,13 @@ wheels/
 
 # Secrets
 .env
+.example.env
+
+# ChromaDB
+chroma*_db
+
+# Archived files
+*/archive.py
+
+# User profiles
+users/

@@ -5,6 +5,7 @@ import logging
 from discord.ext import commands
 from dotenv import load_dotenv
 from agent import MistralAgent
+from user_profiles import get_user_profile
 
 PREFIX = "!"
 
@@ -51,14 +52,57 @@ async def on_message(message: discord.Message):
     # Ignore messages from self or other bots to prevent infinite loops.
     if message.author.bot or message.content.startswith("!"):
         return
+    
+    # Check if the message is in a profile setup thread
+    if isinstance(message.channel, discord.Thread) and message.channel.name.startswith("Profile Setup -"):
+        # Skip processing for messages in profile setup threads
+        # These will be handled by the create_profile function
+        return
+    
+    # Process User
+    user = await get_user_profile(message.author, message, bot)
+    if not user:
+        return
+    
+    # If message is already in a thread, process directly without creating new thread
+    if isinstance(message.channel, discord.Thread):
+        response = await agent.run(message)
+        if response:
+            chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
+            for chunk in chunks:
+                await message.channel.send(chunk)
+        return
 
-    # Process the message with the agent you wrote
-    # Open up the agent.py file to customize the agent
+    # Process the message with the agent
     logger.info(f"Processing message from {message.author}: {message.content}")
     response = await agent.run(message)
-
-    # Send the response back to the channel
-    await message.reply(response)
+    
+    # Only create thread and reply if there's a response
+    if response:
+        # Make thread name
+        if "profile" in response.lower():
+            thread_name = "Profile Setup - " + message.author.name
+        else:
+            thread_name = await agent.make_thread_name(message)
+        
+        # Look for existing thread with same name
+        existing_thread = None
+        for thread in message.channel.threads:
+            if thread.name == thread_name:
+                existing_thread = thread
+                break
+        
+        # Use existing thread or create new one
+        if existing_thread:
+            thread = existing_thread
+            await message.reply(f"Let's discuss more in the previous thread {thread.mention}")
+        # else:
+        #     thread = await message.create_thread(name=thread_name)
+        
+        # Split response into chunks and send in thread
+        chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
+        for chunk in chunks:
+            await thread.send(chunk)
 
 
 # Commands
@@ -73,6 +117,25 @@ async def ping(ctx, *, arg=None):
         await ctx.send("Pong!")
     else:
         await ctx.send(f"Pong! Your argument was {arg}")
+
+
+@bot.command(name="arxiv", help="Fetches and summarizes recent arxiv papers")
+async def arxiv_command(ctx):
+    # Send initial response
+    initial_msg = await ctx.send("Fetching recent arxiv papers...")
+    
+    # Get papers and summary from agent
+    response = await agent.run(ctx.message)
+    
+    # Split response into chunks of 1900 characters (leaving room for formatting)
+    chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
+    
+    # Edit the first message with the first chunk
+    await initial_msg.edit(content=chunks[0])
+    
+    # Send additional chunks as new messages if needed
+    for chunk in chunks[1:]:
+        await ctx.send(chunk)
 
 
 # Start the bot, connecting it to the gateway
