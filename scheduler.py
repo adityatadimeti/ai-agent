@@ -14,14 +14,28 @@ from pydantic import BaseModel, Field
 from typing import List, Dict
 import time
 import json
+import os
+from dotenv import load_dotenv
+from langchain_ollama.chat_models import ChatOllama
 
-llm = ChatMistralAI(model="mistral-small-latest")
+load_dotenv()
+
+llm = ChatMistralAI(
+    model="mistral-small-latest",
+    mistral_api_key=os.getenv("MISTRAL_API_KEY")
+)
+
+# llm = ChatOllama(
+#     model="llama3.2:1b"
+# )
 
 def call_llm(prompt: str):
     while True:
         try:
             return llm.invoke(prompt)
         except Exception as e:
+            # if "Requests rate limit exceeded" not in str(e):
+            print(e)
             time.sleep(1)
 
 def call_structured_llm(structured_llm, prompt: str):
@@ -29,6 +43,8 @@ def call_structured_llm(structured_llm, prompt: str):
         try:
             return structured_llm.invoke(prompt)
         except Exception as e:
+            # if "Requests rate limit exceeded" not in str(e):
+            print(e)
             time.sleep(1)
 
 tasks_workflow = """
@@ -68,7 +84,6 @@ The user is asking you to do research on a specific topic. We have outlined the 
 (Below is information about the task above, do not include it in the task description)
 - Inputs: Summary of the paper, summary of the abstract
 - Outputs: Compressed summary
-- Prerequisites: 4 OR 5
 - SHOULD ALWAYS BE COMPLETED
 """
 
@@ -331,10 +346,9 @@ def review_tasks(state: ChatbotState):
     return {"new_tasks": new_tasks}
 
 
-def run_v1(prompt: str):
+def run_v1(prompt: str, chatbot_tools: ChatBotTools):
     structured_llm = llm.with_structured_output(UserRequest)
     message = call_structured_llm(structured_llm, prompt)
-    chatbot_tools = ChatBotTools()
 
     chatbot_builder = StateGraph(ChatbotState)
     chatbot_builder.add_node("extract_search_term", chatbot_tools.extract_search_term_node)
@@ -364,5 +378,6 @@ def run_v1(prompt: str):
     return state["final_task_info"]
 
 
-# run_v1("I am reading a paper called Restructuring Vector Quantization with the Rotation Trick. Can you help me understand it?")
+# chatbot_tools = ChatBotTools()
+# state = run_v1("I am reading a paper called Restructuring Vector Quantization with the Rotation Trick. Can you help me understand it?", chatbot_tools)
 # print(state)

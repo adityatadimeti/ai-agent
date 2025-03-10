@@ -5,6 +5,7 @@ import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from scheduler import run_v1, call_llm
+from scheduler import ChatBotTools
 
 MISTRAL_MODEL = "mistral-large-latest"
 SYSTEM_PROMPT = "You are a helpful assistant. Summarize the following arxiv papers in a clear and concise way, focusing on the key findings and implications."
@@ -15,6 +16,7 @@ class MistralAgent:
         MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 
         self.client = Mistral(api_key=MISTRAL_API_KEY)
+        self.chatbot_tools = ChatBotTools()
     
     async def fetch_arxiv_papers(self):
         # Compute the date range for the past week
@@ -70,7 +72,7 @@ class MistralAgent:
         return combined_text
 
     async def run(self, message: discord.Message):
-        return run_v1(message.content)
+        return run_v1(message.content, self.chatbot_tools)
 
     async def make_thread_name(self, message: discord.Message):
         """Extract the title of the thread from the user's request"""

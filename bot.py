@@ -52,9 +52,14 @@ async def on_message(message: discord.Message):
     if message.author.bot or message.content.startswith("!"):
         return
 
+    # Only respond if the bot is mentioned
+    if bot.user not in message.mentions:
+        print("Bot not mentioned, skipping")
+        return
+
     # Process the message with the agent
     logger.info(f"Processing message from {message.author}: {message.content}")
-    # Make a thread name and check if thread exists
+    # Make a thread name and check if thread exists  
     thread_name = await agent.make_thread_name(message)
     
     # Look for existing thread with same name
@@ -90,31 +95,31 @@ async def on_message(message: discord.Message):
 # This example command is here to show you how to add commands to the bot.
 # Run !ping with any number of arguments to see the command in action.
 # Feel free to delete this if your project will not need commands.
-@bot.command(name="ping", help="Pings the bot.")
-async def ping(ctx, *, arg=None):
-    if arg is None:
-        await ctx.send("Pong!")
-    else:
-        await ctx.send(f"Pong! Your argument was {arg}")
+# @bot.command(name="ping", help="Pings the bot.")
+# async def ping(ctx, *, arg=None):
+#     if arg is None:
+#         await ctx.send("Pong!")
+#     else:
+#         await ctx.send(f"Pong! Your argument was {arg}")
 
 
-@bot.command(name="arxiv", help="Fetches and summarizes recent arxiv papers")
-async def arxiv_command(ctx):
-    # Send initial response
-    initial_msg = await ctx.send("Fetching recent arxiv papers...")
+# @bot.command(name="arxiv", help="Fetches and summarizes recent arxiv papers")
+# async def arxiv_command(ctx):
+#     # Send initial response
+#     initial_msg = await ctx.send("Fetching recent arxiv papers...")
     
-    # Get papers and summary from agent
-    response = await agent.run(ctx.message)
+#     # Get papers and summary from agent
+#     response = await agent.run(ctx.message)
     
-    # Split response into chunks of 1900 characters (leaving room for formatting)
-    chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
+#     # Split response into chunks of 1900 characters (leaving room for formatting)
+#     chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
     
-    # Edit the first message with the first chunk
-    await initial_msg.edit(content=chunks[0])
+#     # Edit the first message with the first chunk
+#     await initial_msg.edit(content=chunks[0])
     
-    # Send additional chunks as new messages if needed
-    for chunk in chunks[1:]:
-        await ctx.send(chunk)
+#     # Send additional chunks as new messages if needed
+#     for chunk in chunks[1:]:
+#         await ctx.send(chunk)
 
 
 # Start the bot, connecting it to the gateway
