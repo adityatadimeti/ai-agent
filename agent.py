@@ -84,3 +84,4 @@ class MistralAgent:
         title_of_thread = call_llm(title_of_thread_prompt)
         print("Title of thread: ", title_of_thread.content)
         return title_of_thread.content
+    

@@ -55,6 +55,8 @@ async def on_message(message: discord.Message):
     
     # Process User
     user = await get_user_profile(message.author, message)
+    if not user:
+        return
     
     # Process the message with the agent
     logger.info(f"Processing message from {message.author}: {message.content}")
