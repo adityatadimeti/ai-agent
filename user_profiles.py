@@ -119,7 +119,7 @@ async def create_profile(user: discord.Member, message: discord.Message, bot: co
 
             await thread.send(
                 f"""
-                Confirming that this is you prefered description?
+                Confirming that this is your preferred description?
 
                 {str(blurb)}
 

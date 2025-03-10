@@ -116,8 +116,8 @@ class ChatBotTools:
         search_term = call_llm(search_term_prompt)
         print("Search term: ", search_term.content)
         return {"search_term": search_term.content}
-    
-        
+
+
     def check_local_vector_database_node(self, state: ChatbotState):
         """Check the local vector database for relevance"""
         number_of_papers = 5
@@ -276,7 +276,13 @@ class ChatBotTools:
         if state["new_tasks"][5]["task"] == "None":
             print("Doing task 7!")
             print("User's request: ", state["user_request"].request)
-            response = call_llm(state["user_request"].request)
+            random_prompt = f"""
+            Remind the user that you are a bot tasked with helping research / technical questions and querying the Arxiv repository to answer them.
+            If you end up at this step, it means that the user's request is not related to research or the Arxiv repository.
+            Please mention that to them.
+            User's request: {state["user_request"].request}
+            """
+            response = call_llm(random_prompt)
             print("Response: ", response.content)
             return {"final_task_info": response.content}
 
@@ -286,14 +292,16 @@ class ChatBotTools:
 
 # Nodes
 def review_tasks(state: ChatbotState):
-    """Review the tasks and justification one by one and make sure they are relevant to the user's request.
+    """
+       Review the tasks and justification one by one and make sure they are relevant to the user's request.
        If not relevant, remove the task and justification and give a reason for the removal.
        If need more tasks, add more tasks and give a justification for the new tasks."""
     new_tasks = []
     for task in TASKS:
         print("Task: ", task)
         new_task_msg =  call_llm(
-            f"""User's request: {state["user_request"].request}
+            f"""User's request: {state["user_request"].request}\
+                Reminder, you are a bot tasked with helping research / technical questions and querying the Arxiv repository to answer them.
                 Review the task ({task}) and make sure they are relevant to the user's request. 
                 Here are the task capabilities: {tasks_workflow}
                 If relevant, return the task, return only the task in JSON format: {{"task": "{task}", "justification": "Justification for the task"}}
@@ -308,7 +316,9 @@ def review_tasks(state: ChatbotState):
         Task: {task}
         Here is the task capabilities: {tasks_workflow}
         Here is the new task: {new_task_msg.content}
+        Reminder, you are a bot tasked with helping research / technical questions and querying the Arxiv repository to answer them.
         Are you sure about this skipping this task in terms of completing the user's request? 
+        Example: Queries that ask you something that is not related to research or the Arxiv repository are not relevant, like "hi" or "please set up my user profile"
         If you think we should do this task, return only the task in the JSON format: {{"task": "{task}", "justification": "Justification for the task"}}
         If you are sure we should not do this task, return only return the task in the JSON format: {{"task": "None", "justification": "Reason for the removal"}}
         """

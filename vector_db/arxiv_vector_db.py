@@ -372,6 +372,13 @@ class ArxivFullTextDB:
             base_paper_id = f"paper_{paper['title']}_{paper.get('published_date', '')}"
             base_paper_id = "".join(c if c.isalnum() else "_" for c in base_paper_id)
             
+            # Check if first chunk exists
+            first_chunk_id = f"{base_paper_id}_chunk_0"
+            existing_doc = self.collection.get(ids=[first_chunk_id])
+            if existing_doc['ids']:
+                print(f"Paper {base_paper_id} already exists, skipping...")
+                continue
+            
             # Get chunks for the paper
             chunks = self.split_paper_into_chunks(paper)
             
@@ -382,12 +389,6 @@ class ArxivFullTextDB:
             for chunk in chunks:
                 # Create chunk-specific ID
                 chunk_id = f"{base_paper_id}_chunk_{chunk['chunk_id']}"
-                
-                # Check if chunk already exists
-                existing_doc = self.collection.get(ids=[chunk_id])
-                if existing_doc['ids']:
-                    print(f"Chunk {chunk_id} already exists, skipping...")
-                    continue
                 
                 documents.append(chunk["content"])
                 metadatas.append({
@@ -404,8 +405,8 @@ class ArxivFullTextDB:
                 })
                 ids.append(chunk_id)
             
-            if not documents:  # Skip if no new chunks to add
-                print("No new chunks to add for this paper")
+            if not documents:  # Skip if no chunks to add
+                print("No chunks to add for this paper")
                 continue
             
             # Add documents in batches

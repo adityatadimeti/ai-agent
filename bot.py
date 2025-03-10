@@ -53,39 +53,54 @@ async def on_message(message: discord.Message):
     if message.author.bot or message.content.startswith("!"):
         return
     
+    # Check if the message is in a profile setup thread
+    if isinstance(message.channel, discord.Thread) and message.channel.name.startswith("Profile Setup -"):
+        # Skip processing for messages in profile setup threads
+        # These will be handled by the create_profile function
+        return
+    
     # Process User
     user = await get_user_profile(message.author, message, bot)
     if not user:
         return
     
+    # If message is already in a thread, process directly without creating new thread
+    if isinstance(message.channel, discord.Thread):
+        response = await agent.run(message)
+        if response:
+            chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
+            for chunk in chunks:
+                await message.channel.send(chunk)
+        return
+
     # Process the message with the agent
     logger.info(f"Processing message from {message.author}: {message.content}")
-    # Make a thread name and check if thread exists
-    thread_name = await agent.make_thread_name(message)
-    
-    # Look for existing thread with same name
-    existing_thread = None
-    for thread in message.channel.threads:
-        if thread.name == thread_name:
-            existing_thread = thread
-            break
-    
-    # Use existing thread or create new one
-    if existing_thread:
-        thread = existing_thread
-        await message.reply(f"Let's discuss more in the previous thread {thread.mention}")
-    else:
-        thread = await message.create_thread(name=thread_name)
-
     response = await agent.run(message)
     
-    # Only reply if there's a response
+    # Only create thread and reply if there's a response
     if response:
+        # Make thread name
+        if "profile" in response.lower():
+            thread_name = "Profile Setup - " + message.author.name
+        else:
+            thread_name = await agent.make_thread_name(message)
         
-        # Split response into chunks 
+        # Look for existing thread with same name
+        existing_thread = None
+        for thread in message.channel.threads:
+            if thread.name == thread_name:
+                existing_thread = thread
+                break
+        
+        # Use existing thread or create new one
+        if existing_thread:
+            thread = existing_thread
+            await message.reply(f"Let's discuss more in the previous thread {thread.mention}")
+        # else:
+        #     thread = await message.create_thread(name=thread_name)
+        
+        # Split response into chunks and send in thread
         chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
-        
-        # Send chunks in the thread
         for chunk in chunks:
             await thread.send(chunk)
 
