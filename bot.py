@@ -5,7 +5,7 @@ import logging
 from discord.ext import commands
 from dotenv import load_dotenv
 from agent import MistralAgent
-from profiles import get_user
+from user_profiles import get_user_profile
 
 PREFIX = "!"
 
@@ -54,7 +54,7 @@ async def on_message(message: discord.Message):
         return
     
     # Process User
-    user = get_user(message.author, message)
+    user = await get_user_profile(message.author, message)
     
     # Process the message with the agent
     logger.info(f"Processing message from {message.author}: {message.content}")
