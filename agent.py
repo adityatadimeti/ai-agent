@@ -70,6 +70,7 @@ class MistralAgent:
         return combined_text
 
     async def run(self, message: discord.Message):
+        print("Message: ", message.content)
         return run_v1(message.content)
 
     async def make_thread_name(self, message: discord.Message):

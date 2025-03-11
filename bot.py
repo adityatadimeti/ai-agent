@@ -5,7 +5,7 @@ import logging
 from discord.ext import commands
 from dotenv import load_dotenv
 from agent import MistralAgent
-from user_profiles import get_user_profile
+from user_profiles import get_user_profile, InteractionType
 
 PREFIX = "!"
 
@@ -63,11 +63,37 @@ async def on_message(message: discord.Message):
     user = await get_user_profile(message.author, message, bot)
     if not user:
         return
+
+    original_content = message.content
+    # Add user history to the message content for context
+    if user and hasattr(user, 'context_string'):
+        # Create a new message object with context included
+        # message_with_context = discord.Object(id=message.id)
+        message.content = f"User History Context:{user.context_string}\n\nCurrent Message:{original_content}"
+        # message_with_context.author = message.author
+        # message_with_context.channel = message.channel
+        
+        # # Use the enhanced message for processing
+        # message = message_with_context
+    
+    # Add user message to history (approximate token count - 4 chars per token)
+    user.update_history(
+        interaction_type=InteractionType.USER,
+        text=original_content,
+        num_tokens=len(original_content) // 4
+    )
     
     # If message is already in a thread, process directly without creating new thread
     if isinstance(message.channel, discord.Thread):
         response = await agent.run(message)
         if response:
+            # Add agent response to history
+            user.update_history(
+                interaction_type=InteractionType.SYSTEM,
+                text=response,
+                num_tokens=len(response) // 4
+            )
+            
             chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
             for chunk in chunks:
                 await message.channel.send(chunk)
@@ -75,10 +101,18 @@ async def on_message(message: discord.Message):
 
     # Process the message with the agent
     logger.info(f"Processing message from {message.author}: {message.content}")
+
     response = await agent.run(message)
     
     # Only create thread and reply if there's a response
     if response:
+        # Add agent response to history
+        user.update_history(
+            interaction_type=InteractionType.SYSTEM,
+            text=response,
+            num_tokens=len(response) // 4
+        )
+        
         # Make thread name
         if "profile" in response.lower():
             thread_name = "Profile Setup - " + message.author.name
