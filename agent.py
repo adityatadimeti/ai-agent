@@ -5,6 +5,9 @@ import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from scheduler import run_v1, call_llm
+import logging
+
+logger = logging.getLogger("discord.gateway")
 
 MISTRAL_MODEL = "mistral-large-latest"
 SYSTEM_PROMPT = "You are a helpful assistant. Summarize the following arxiv papers in a clear and concise way, focusing on the key findings and implications."
@@ -70,19 +73,16 @@ class MistralAgent:
         return combined_text
 
     async def run(self, message: discord.Message):
-        print("Message: ", message.content)
         return run_v1(message.content)
 
     async def make_thread_name(self, message: discord.Message):
         """Extract the title of the thread from the user's request"""
-        print("User's request: ", message.content)
         title_of_thread_prompt = f"""
             User's request: {message.content}
             Extract the title of the thread from the user's request that is succinct, less than 7 words.
             Only output the title of the thread, nothing else.
         """
-        print("Title of thread prompt: ", title_of_thread_prompt)
         title_of_thread = call_llm(title_of_thread_prompt)
-        print("Title of thread: ", title_of_thread.content)
+        logger.info(f"Title of thread: {title_of_thread.content}")
         return title_of_thread.content
     

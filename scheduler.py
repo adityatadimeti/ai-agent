@@ -1,3 +1,4 @@
+import logging
 from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START, END
 from IPython.display import Image, display
@@ -14,6 +15,16 @@ from pydantic import BaseModel, Field
 from typing import List, Dict
 import time
 import json
+
+# Initialize logger
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# Silence httpx logs
+logging.getLogger("httpx").disabled = True
+logging.getLogger("discord.gateway").disabled = True
+logging.getLogger("arxiv").disabled = True
+logging.getLogger("chromadb.telemetry.product.posthog").disabled = True
 
 llm = ChatMistralAI(model="mistral-small-latest")
 
@@ -107,15 +118,13 @@ class ChatBotTools:
 
     def extract_search_term_node(self, state: ChatbotState):
         """Extract the search term from the user's request"""
-        print("User's request: ", state)
+        logger.info(f"Extracting search term from request: {state['user_request'].request}")
         search_term_prompt = f"""
             User's request: {state["user_request"].request}
             Extract the one search term phrase from the user's request to search Arxiv to get relevant papers.
             Only output the search term, nothing else.
         """
-        print("Search term prompt: ", search_term_prompt)
         search_term = call_llm(search_term_prompt)
-        print("Search term: ", search_term.content)
         return {"search_term": search_term.content}
 
 
@@ -124,9 +133,8 @@ class ChatBotTools:
         number_of_papers = 5
         
         if state["new_tasks"][0]["task"] != "None":
-            print("Doing task 1!")
-
-            print("User's request: ", state)
+            logger.info(f"TASK 1: Checking local vector database for search term: {state['search_term']}")
+            
             embellished_search_term = call_llm(
                 f"""
                 User's request: {state["user_request"].request}
@@ -135,13 +143,8 @@ class ChatBotTools:
                 """
             )
 
-            print("Embellished search term: ", embellished_search_term)
-
             _, is_relevant_abstract = self.arxiv_abstract_db.check_query_relevance(embellished_search_term.content, number_of_papers)
             _, is_relevant_full_text = self.arxiv_full_text_db.check_query_relevance(embellished_search_term.content, number_of_papers)
-
-            print("Is relevant abstract: ", is_relevant_abstract)
-            print("Is relevant full text: ", is_relevant_full_text)
             
             if is_relevant_abstract and is_relevant_full_text:
                 return {"check_local_vector_database_info": []}
@@ -157,7 +160,7 @@ class ChatBotTools:
             return {"check_local_vector_database_info": abstracts + full_texts}
 
         else:
-            print("Not doing task 1!")
+            logger.info("TASK 1: Skipping local vector database check - task marked as not needed")
             return {"check_local_vector_database_info": []}
         
     def query_arxiv_api_abstracts_node(self, state: ChatbotState):
@@ -165,40 +168,41 @@ class ChatBotTools:
         number_of_papers = 5
         
         if state["new_tasks"][1]["task"] != "None" and state["check_local_vector_database_info"] == []:
-            print("Doing task 2!")
-
+            logger.info(f"TASK 2: Fetching {number_of_papers} abstracts from Arxiv API for search term: {state['search_term']}")
+            
             abstracts = self.arxiv_abstract_fetcher.fetch_arxiv_abstracts(state["search_term"], number_of_papers)
-            print("Abstracts: ", abstracts)
             self.arxiv_abstract_db.add_abstracts(abstracts)
 
             return {"arxiv_api_abstracts_info": abstracts}
 
         else:
-            print("Not doing task 2!")
+            logger.info("TASK 2: Skipping Arxiv API abstract fetch - task marked as not needed")
             return {"arxiv_api_abstracts_info": []}
         
     def query_arxiv_api_papers_node(self, state: ChatbotState):
         """Check the Arxiv API for relevance"""
         number_of_papers = 5
         
-        print("Trying task 3!")
         if state["new_tasks"][2]["task"] != "None"and state["check_local_vector_database_info"] == []:
-            print("Doing task 3!")
+            logger.info(f"TASK 3: Fetching {number_of_papers} papers from Arxiv API for search term: {state['search_term']}")
 
             papers = self.arxiv_full_text_fetcher.fetch_arxiv_full_text_from_query(state["search_term"], number_of_papers)
-            self.arxiv_full_text_db.add_papers(papers)
+
+            # TODO: WP 3/11/24: bypassing ChromaDB for now
+            if False:
+                self.arxiv_full_text_db.add_papers(papers)
 
             return {"arxiv_api_papers_info": papers}
 
         else:
-            print("Not doing task 3!")
+            logger.info("TASK 3: Skipping Arxiv API paper fetch - task marked as not needed")
             return {"arxiv_api_papers_info": []}
         
     def summarize_abstract_node(self, state: ChatbotState):
         number_of_bullets = 5
 
         if state["new_tasks"][3]["task"] != "None":
-            print("Doing task 4!")
+            logger.info(f"TASK 4: Summarizing {number_of_bullets} abstracts")
 
             abstract_summaries = []
             for abstract in state["arxiv_api_abstracts_info"]:
@@ -213,7 +217,7 @@ class ChatBotTools:
             return {"summarize_abstract_info": abstract_summaries}
 
         else:
-            print("Not doing task 4!")
+            logger.info("TASK 4: Skipping abstract summarization - task marked as not needed")
             return {"summarize_abstract_info": []}
         
     def summarize_paper_node(self, state: ChatbotState):
@@ -221,7 +225,7 @@ class ChatBotTools:
         chunk_size = 10000
 
         if state["new_tasks"][4]["task"] != "None":
-            print("Doing task 5!")
+            logger.info(f"TASK 5: Summarizing {number_of_bullets} papers")
 
             paper_summaries = []
             for paper in state["arxiv_api_papers_info"]:
@@ -243,7 +247,6 @@ class ChatBotTools:
                     Summarize this section in {number_of_bullets} detailed and technical bullet points that is less than 2 sentences each. Do not include any other text than the bullet points."""
             
                     chunk_summary = call_llm(chunk_summary_prompt)
-                    # print("Chunk summary: ", chunk_summary.content)
                     chunk_summaries.append(chunk_summary.content)
 
                 # Combine chunk summaries
@@ -252,12 +255,12 @@ class ChatBotTools:
             return {"summarize_paper_info": paper_summaries}
 
         else:
-            print("Not doing task 5!")
+            logger.info("TASK 5: Skipping paper summarization - task marked as not needed")
             return {"summarize_paper_info": []}
         
     def compress_summaries_node(self, state: ChatbotState):
         if state["new_tasks"][5]["task"] != "None":
-            print("Doing task 6!")
+            logger.info("TASK 6: Compressing summaries into a single summary")
 
             compression_prompt = f"""
             Here is the goal of the user: {state["user_request"].request}
@@ -270,13 +273,12 @@ class ChatBotTools:
             return {"compress_summaries_info": compressed_summary.content}
 
         else:
-            print("Not doing task 6!")
+            logger.info("TASK 6: Skipping summary compression - task marked as not needed")
             return {"compress_summaries_info": []}
         
     def final_task_node(self, state: ChatbotState):
         if state["new_tasks"][5]["task"] == "None":
-            print("Doing task 7!")
-            print("User's request: ", state["user_request"].request)
+            logger.info(f"TASK 7: Final task - formatting response")
             
             # Format chat history if it exists
             chat_history_text = ""
@@ -302,7 +304,6 @@ class ChatBotTools:
             """
             
             reference_detection = call_llm(reference_detection_prompt)
-            print("Reference detection: ", reference_detection.content)
             is_referencing_history = "YES" in reference_detection.content.upper()
             
             # Generate appropriate response based on detection
@@ -325,14 +326,11 @@ class ChatBotTools:
                 User's request: {state["user_request"].request}
                 """
             
-            print("Response prompt: ", response_prompt)
-            
             response = call_llm(response_prompt)
-            print("Response: ", response.content)
             return {"final_task_info": response.content}
 
         else:
-            print("Not doing task 7!")
+            logger.info("TASK 7: Skipping final task - task marked as not needed")
             return {"final_task_info": state["compress_summaries_info"]}
 
 # Nodes
@@ -343,7 +341,6 @@ def review_tasks(state: ChatbotState):
        If need more tasks, add more tasks and give a justification for the new tasks."""
     new_tasks = []
     for task in TASKS:
-        print("Task: ", task)
         new_task_msg =  call_llm(
             f"""User's request: {state["user_request"].request}\
                 Reminder, you are a bot tasked with helping research / technical questions and querying the Arxiv repository to answer them.
@@ -352,7 +349,8 @@ def review_tasks(state: ChatbotState):
                 If relevant, return the task, return only the task in JSON format: {{"task": "{task}", "justification": "Justification for the task"}}
                 If not relevant, return only in the JSON format: {{"task": "None", "justification": "Reason for the removal"}}"""
         )
-        print("New task: ", new_task_msg.content)
+        logger.info(f"{task}")
+        logger.info(f"Doing step: - {'Yes' if 'None' not in new_task_msg.content else 'No'}")
         # Strip any markdown formatting and extract just the JSON content
         
 
@@ -368,7 +366,7 @@ def review_tasks(state: ChatbotState):
         If you are sure we should not do this task, return only return the task in the JSON format: {{"task": "None", "justification": "Reason for the removal"}}
         """
         double_check = call_llm(double_check_prompt)
-        print("Double check: ", double_check.content)
+        logger.info(f"Double check: {'Yes' if 'None' not in double_check.content else 'No'}")
         content = double_check.content
 
         if "```json" in content:
@@ -379,7 +377,7 @@ def review_tasks(state: ChatbotState):
             task_json = json.loads(content)
             new_tasks.append(task_json)
         except json.JSONDecodeError as e:
-            print(f"Error parsing JSON: {e}")
+            logger.warning(f"Warning: parsing JSON {e}")
             # Skip invalid JSON
             continue
         time.sleep(1)
@@ -402,8 +400,6 @@ def run_v1(prompt: str):
     """
     
     message = call_structured_llm(structured_llm, formatted_prompt)
-    print("prompt_v1: ", prompt)
-    print("message_v1: ", message)
     chatbot_tools = ChatBotTools()
 
     chatbot_builder = StateGraph(ChatbotState)
@@ -431,7 +427,6 @@ def run_v1(prompt: str):
     chatbot = chatbot_builder.compile()
 
     state = chatbot.invoke({"user_request": message})
-    # print("State: ", state)
     return state["final_task_info"]
 
 
