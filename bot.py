@@ -45,14 +45,45 @@ async def on_message(message: discord.Message):
     if isinstance(message.channel, discord.Thread) and user_id in active_searches and active_searches[user_id].get('status') == 'awaiting_clarification':
         original_query = active_searches[user_id]['original_query_raw']
         
+        # Send initial response
+        initial_msg = await message.channel.send("Processing your response...")
+        
         # Process the clarification response
         response = await agent.run(message, is_follow_up=True, original_query=original_query)
         
-        # Split response into chunks if needed
-        if response:
-            chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
-            for chunk in chunks:
-                await message.channel.send(chunk)
+        # Split response at markdown headings and then into chunks if needed
+        chunks = []
+        sections = response.split('\n')
+        current_chunk = []
+        current_length = 0
+        
+        for line in sections:
+            # If line starts with heading (#) and we have content, start new chunk
+            if line.lstrip().startswith('#') and current_chunk:
+                chunks.append('\n'.join(current_chunk))
+                current_chunk = []
+                current_length = 0
+                
+            # Add line to current chunk
+            line_length = len(line) + 1  # +1 for newline
+            if current_length + line_length > 1900:
+                chunks.append('\n'.join(current_chunk))
+                current_chunk = []
+                current_length = 0
+                
+            current_chunk.append(line)
+            current_length += line_length
+        
+        # Add any remaining content as final chunk
+        if current_chunk:
+            chunks.append('\n'.join(current_chunk))
+        
+        # Edit the first message with the first chunk
+        await initial_msg.edit(content=chunks[0])
+        
+        # Send additional chunks as new messages if needed
+        for chunk in chunks[1:]:
+            await message.channel.send(chunk)
         
         return
     
