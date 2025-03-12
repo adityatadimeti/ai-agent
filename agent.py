@@ -69,16 +69,21 @@ class MistralAgent:
 
         return combined_text
 
-    async def run(self, message: discord.Message):
-        """Process the message and generate a response"""
-        print("Message: ", message.content)
+    async def run(self, message: discord.Message, is_first_message: bool = True) -> str:
+        """
+        Process the message and generate a response
         
-        # Check if this is in a thread or not
-        is_in_thread = isinstance(message.channel, discord.Thread)
-        print(f"Message is in thread: {is_in_thread}")
+        Args:
+            message: The Discord message
+            is_first_message: Whether this is the first message in a thread
+        """
+        print(f"Processing message: {message.content} (is_first_message: {is_first_message})")
         
-        # For now, just pass the message content - we'll add the thread awareness later
-        return run_v1(message.content)
+        try:
+            return run_v1(message.content, is_new_thread=is_first_message)
+        except Exception as e:
+            print(f"Error in run_v1: {e}")
+            return "I encountered an issue processing your request. Please try again."
 
     async def make_thread_name(self, message: discord.Message):
         """Extract the title of the thread from the user's request"""

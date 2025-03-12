@@ -46,90 +46,31 @@ async def on_message(message: discord.Message):
 
     https://discordpy.readthedocs.io/en/latest/api.html#discord.on_message
     """
-    # Skip processing commands, bot messages, etc.
-    await bot.process_commands(message)
-    if message.author.bot or message.content.startswith("!"):
-        return
-    
-    # Process User
-    user = await get_user_profile(message.author, message, bot)
-    if not user:
+    if message.author == bot.user:
         return
 
-    original_content = message.content
-    # Add user context if available
-    if user and hasattr(user, 'context_string'):
-        message.content = f"User History Context:{user.context_string}\n\nCurrent Message:{original_content}"
+    # Check if this is the first message in the thread
+    is_first_message = True
+    if isinstance(message.channel, discord.Thread):
+        # Get the first message in the thread
+        first_message = None
+        async for msg in message.channel.history(limit=1, oldest_first=True):
+            first_message = msg
+            break
+        
+        # If this message is not the first message, it's a follow-up
+        if first_message and first_message.id != message.id:
+            is_first_message = False
     
-    # Update history
-    user.update_history(
-        interaction_type=InteractionType.USER,
-        text=original_content,
-        num_tokens=len(original_content) // 4
-    )
+    print(f"Message in thread: {isinstance(message.channel, discord.Thread)}")
+    print(f"Is first message: {is_first_message}")
     
-    # Process the message with the agent (new thread)
-    logger.info(f"Processing message from {message.author}: {message.content}")
-    response = await agent.run(message)  # No need to add is_new_thread yet
-    
-    # Only create thread and reply if there's a response
-    if response:
-        # Add agent response to history
-        user.update_history(
-            interaction_type=InteractionType.USER,
-            text=response,
-            num_tokens=len(response) // 4
-        )
-        
-        # Make thread name
-        if "profile" in response.lower():
-            thread_name = "Profile Setup - " + message.author.name
-        else:
-            thread_name = await agent.make_thread_name(message)
-        
-        # Add debug prints
-        logger.info(f"Creating thread with name: '{thread_name}'")
-        
-        # Look for existing thread with same name
-        existing_thread = None
-        for thread in message.channel.threads:
-            logger.info(f"Found existing thread: '{thread.name}'")
-            if thread.name == thread_name:
-                existing_thread = thread
-                logger.info(f"Matched existing thread: '{thread.name}'")
-                break
-        
-        # Use existing thread or create new one
-        if existing_thread:
-            thread = existing_thread
-            logger.info(f"Using existing thread: {thread.name} (ID: {thread.id})")
-            try:
-                await message.reply(f"Let's discuss more in the previous thread {thread.mention}")
-            except Exception as e:
-                logger.error(f"Error mentioning thread: {e}")
-                await message.reply(f"Let's discuss more in the previous thread '{thread.name}'")
-        else:
-            try:
-                logger.info(f"Creating new thread with name: '{thread_name}'")
-                thread = await message.create_thread(name=thread_name)
-                logger.info(f"Successfully created thread: {thread.name} (ID: {thread.id})")
-            except Exception as e:
-                logger.error(f"Error creating thread: {e}")
-                # Fallback for thread creation error
-                await message.reply(f"I found some information about that, but couldn't create a thread. Here's my response:")
-                chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
-                for chunk in chunks:
-                    await message.channel.send(chunk)
-                return
-        
-        # Split response into chunks and send in thread
-        chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
-        for chunk in chunks:
-            try:
-                await thread.send(chunk)
-            except Exception as e:
-                logger.error(f"Error sending message to thread: {e}")
-                await message.channel.send(f"Error sending to thread: {str(e)}")
+    try:
+        response = await agent.run(message, is_first_message)
+        await message.channel.send(response)
+    except Exception as e:
+        logger.error(f"Error processing message: {e}")
+        await message.channel.send("I encountered an error processing your request.")
 
 
 # Commands
