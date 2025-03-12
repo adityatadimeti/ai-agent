@@ -90,9 +90,10 @@ class ChatbotState(TypedDict):
     search_term: str
     user_request: UserRequest
     new_tasks: List[Dict[str, str]]
-    fetch_arxiv_papers_info: List[Dict[str, str]]  # New field
-    store_papers_info: str  # New field
-    query_vector_db_info: List[Dict[str, str]]  # New field
+    is_new_thread: bool
+    fetch_arxiv_papers_info: List[Dict[str, str]]
+    store_papers_info: str
+    query_vector_db_info: List[Dict[str, str]]
     summarize_abstract_info: List[Dict[str, str]]
     summarize_paper_info: List[Dict[str, str]]
     compress_summaries_info: List[Dict[str, str]]
@@ -150,6 +151,11 @@ class ChatBotTools:
     def fetch_arxiv_papers_node(self, state: ChatbotState):
         """Fetch papers from Arxiv API based on search term"""
         number_of_papers = 5
+        
+        # Skip fetching if this is not a new thread
+        if not state.get("is_new_thread", True):
+            print("Skipping arXiv fetch for follow-up query in existing thread")
+            return {"fetch_arxiv_papers_info": []}
         
         if state["new_tasks"][0]["task"] != "None":
             print("Doing task 1: Fetching papers from Arxiv API!")
@@ -215,17 +221,31 @@ class ChatBotTools:
         """Query the local vector database for relevant papers"""
         number_of_papers = 5
         
-        if state["new_tasks"][2]["task"] != "None" and state["store_papers_info"]:
+        if state["new_tasks"][2]["task"] != "None":
             print("Doing task 3: Querying local vector database!")
             
-            # Create an embellished search query for better vector search results
-            embellished_search_term = call_llm(
-                f"""
-                User's request: {state["user_request"].request}
-                Search term: {state["search_term"]}
-                Given this search term, write a short abstract (< 200 words) about it so that we can embed the paragraph and search our vector database effectively. You are embellishing the query for better results in vector search.
-                """
-            )
+            # For follow-up queries, emphasize the specific question
+            if not state.get("is_new_thread", True):
+                embellished_search_term = call_llm(
+                    f"""
+                    This is a follow-up question in an ongoing conversation.
+                    User's request: {state["user_request"].request}
+                    Search term: {state["search_term"]}
+                    Create a detailed query (200-300 words) that specifically focuses on the aspects 
+                    asked about in this follow-up question. Be specific and technical to find the most relevant 
+                    information in our vector database.
+                    """
+                )
+            else:
+                # Regular embellishment for first query
+                embellished_search_term = call_llm(
+                    f"""
+                    User's request: {state["user_request"].request}
+                    Search term: {state["search_term"]}
+                    Given this search term, write a short abstract (< 200 words) about it so that we can embed the paragraph and search our vector database effectively. You are embellishing the query for better results in vector search.
+                    """
+                )
+            
             print("Embellished search term:", embellished_search_term.content)
             
             # Query both databases
@@ -560,10 +580,9 @@ def review_tasks(state: ChatbotState):
     return {"new_tasks": new_tasks}
 
 
-def run_v1(prompt: str):
+def run_v1(prompt: str, is_new_thread: bool = True):
     structured_llm = llm.with_structured_output(UserRequest)
     
-    # Add instructions to extract just the current request
     formatted_prompt = f"""
     The following contains a chat history followed by the user's current request.
     Please extract:
@@ -578,6 +597,8 @@ def run_v1(prompt: str):
     message = call_structured_llm(structured_llm, formatted_prompt)
     print("prompt_v1: ", prompt)
     print("message_v1: ", message)
+    print("Is new thread: ", is_new_thread)
+    
     chatbot_tools = ChatBotTools()
 
     chatbot_builder = StateGraph(ChatbotState)
@@ -615,7 +636,10 @@ def run_v1(prompt: str):
 
     chatbot = chatbot_builder.compile()
 
-    state = chatbot.invoke({"user_request": message})
+    state = chatbot.invoke({
+        "user_request": message,
+        "is_new_thread": is_new_thread
+    })
     # Add debug print to see fetch results
     print("Fetched papers:", state.get("fetch_arxiv_papers_info", []))
     print("Stored papers:", state.get("store_papers_info", ""))
@@ -629,13 +653,13 @@ def run_v1(prompt: str):
 # print(state)
 
 # First query to populate the database
-state = run_v1("Tell me about recent advancements in transformer models.")
-print("First query response:", state)
+# state = run_v1("Tell me about recent advancements in transformer models.")
+# print("First query response:", state)
 
-# Follow-up queries that should use the vector database
-state = run_v1("What are the key efficiency improvements in transformer architectures?")
-print("\nFollow-up query response:", state)
+# # Follow-up queries that should use the vector database
+# state = run_v1("What are the key efficiency improvements in transformer architectures?")
+# print("\nFollow-up query response:", state)
 
-# Another follow-up focusing on a specific aspect
-state = run_v1("How do these transformer models handle attention mechanisms?")
-print("\nSecond follow-up response:", state)
+# # Another follow-up focusing on a specific aspect
+# state = run_v1("How do these transformer models handle attention mechanisms?")
+# print("\nSecond follow-up response:", state)

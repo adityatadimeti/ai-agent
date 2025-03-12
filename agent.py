@@ -70,7 +70,14 @@ class MistralAgent:
         return combined_text
 
     async def run(self, message: discord.Message):
+        """Process the message and generate a response"""
         print("Message: ", message.content)
+        
+        # Check if this is in a thread or not
+        is_in_thread = isinstance(message.channel, discord.Thread)
+        print(f"Message is in thread: {is_in_thread}")
+        
+        # For now, just pass the message content - we'll add the thread awareness later
         return run_v1(message.content)
 
     async def make_thread_name(self, message: discord.Message):

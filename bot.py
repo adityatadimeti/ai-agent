@@ -46,17 +46,9 @@ async def on_message(message: discord.Message):
 
     https://discordpy.readthedocs.io/en/latest/api.html#discord.on_message
     """
-    # Don't delete this line! It's necessary for the bot to process commands.
+    # Skip processing commands, bot messages, etc.
     await bot.process_commands(message)
-
-    # Ignore messages from self or other bots to prevent infinite loops.
     if message.author.bot or message.content.startswith("!"):
-        return
-    
-    # Check if the message is in a profile setup thread
-    if isinstance(message.channel, discord.Thread) and message.channel.name.startswith("Profile Setup -"):
-        # Skip processing for messages in profile setup threads
-        # These will be handled by the create_profile function
         return
     
     # Process User
@@ -65,50 +57,26 @@ async def on_message(message: discord.Message):
         return
 
     original_content = message.content
-    # Add user history to the message content for context
+    # Add user context if available
     if user and hasattr(user, 'context_string'):
-        # Create a new message object with context included
-        # message_with_context = discord.Object(id=message.id)
         message.content = f"User History Context:{user.context_string}\n\nCurrent Message:{original_content}"
-        # message_with_context.author = message.author
-        # message_with_context.channel = message.channel
-        
-        # # Use the enhanced message for processing
-        # message = message_with_context
     
-    # Add user message to history (approximate token count - 4 chars per token)
+    # Update history
     user.update_history(
         interaction_type=InteractionType.USER,
         text=original_content,
         num_tokens=len(original_content) // 4
     )
     
-    # If message is already in a thread, process directly without creating new thread
-    if isinstance(message.channel, discord.Thread):
-        response = await agent.run(message)
-        if response:
-            # Add agent response to history
-            user.update_history(
-                interaction_type=InteractionType.SYSTEM,
-                text=response,
-                num_tokens=len(response) // 4
-            )
-            
-            chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
-            for chunk in chunks:
-                await message.channel.send(chunk)
-        return
-
-    # Process the message with the agent
+    # Process the message with the agent (new thread)
     logger.info(f"Processing message from {message.author}: {message.content}")
-
-    response = await agent.run(message)
+    response = await agent.run(message)  # No need to add is_new_thread yet
     
     # Only create thread and reply if there's a response
     if response:
         # Add agent response to history
         user.update_history(
-            interaction_type=InteractionType.SYSTEM,
+            interaction_type=InteractionType.USER,
             text=response,
             num_tokens=len(response) // 4
         )
@@ -119,24 +87,49 @@ async def on_message(message: discord.Message):
         else:
             thread_name = await agent.make_thread_name(message)
         
+        # Add debug prints
+        logger.info(f"Creating thread with name: '{thread_name}'")
+        
         # Look for existing thread with same name
         existing_thread = None
         for thread in message.channel.threads:
+            logger.info(f"Found existing thread: '{thread.name}'")
             if thread.name == thread_name:
                 existing_thread = thread
+                logger.info(f"Matched existing thread: '{thread.name}'")
                 break
         
         # Use existing thread or create new one
         if existing_thread:
             thread = existing_thread
-            await message.reply(f"Let's discuss more in the previous thread {thread.mention}")
-        # else:
-        #     thread = await message.create_thread(name=thread_name)
+            logger.info(f"Using existing thread: {thread.name} (ID: {thread.id})")
+            try:
+                await message.reply(f"Let's discuss more in the previous thread {thread.mention}")
+            except Exception as e:
+                logger.error(f"Error mentioning thread: {e}")
+                await message.reply(f"Let's discuss more in the previous thread '{thread.name}'")
+        else:
+            try:
+                logger.info(f"Creating new thread with name: '{thread_name}'")
+                thread = await message.create_thread(name=thread_name)
+                logger.info(f"Successfully created thread: {thread.name} (ID: {thread.id})")
+            except Exception as e:
+                logger.error(f"Error creating thread: {e}")
+                # Fallback for thread creation error
+                await message.reply(f"I found some information about that, but couldn't create a thread. Here's my response:")
+                chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
+                for chunk in chunks:
+                    await message.channel.send(chunk)
+                return
         
         # Split response into chunks and send in thread
         chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
         for chunk in chunks:
-            await thread.send(chunk)
+            try:
+                await thread.send(chunk)
+            except Exception as e:
+                logger.error(f"Error sending message to thread: {e}")
+                await message.channel.send(f"Error sending to thread: {str(e)}")
 
 
 # Commands
