@@ -21,3 +21,5 @@ chroma*_db
 
 # User profiles
 users/
+
+.DS_Store
