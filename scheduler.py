@@ -17,7 +17,7 @@ import time
 import json
 
 # Initialize logger
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("scheduler")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 # Silence httpx logs

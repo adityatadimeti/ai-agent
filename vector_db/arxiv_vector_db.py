@@ -4,7 +4,7 @@ import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 import os
-from .mistral_embedding_function import MistralEmbeddingFunction
+from mistral_embedding_function import MistralEmbeddingFunction
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from typing import List, Dict
 import time
@@ -230,28 +230,22 @@ class ArxivAbstractFetcher:
             load_full_text=False  # Only load abstracts
         )
 
-        while True:
-            try:
-                # Load documents (this will fetch metadata and abstracts)
-                documents = loader.load()
-                
-                # Convert documents to our paper format
-                papers = []
-                for doc in documents:
-                    abstract = doc.metadata.get("Summary", "").replace("\n", " ")
-                    papers.append({
-                        "title": doc.metadata.get("Title", ""),
-                        "abstract": abstract,
-                        "pdf_url": doc.metadata.get("entry_id", ""),
-                        "authors": doc.metadata.get("Authors", ""),
-                        "published_date": doc.metadata.get("Published", ""),
-                        "categories": ", ".join(doc.metadata.get("categories", [])),
-                        "primary_category": doc.metadata.get("primary_category", "")
-                    })
-                return papers
-            except Exception as e:
-                time.sleep(2)
-                continue
+        # Load documents (this will fetch PDFs and convert them to text)
+        documents = loader.load()
+        
+        # Convert documents to our paper format
+        papers = []
+        for doc in documents:
+            papers.append({
+                "title": doc.metadata.get("Title", ""),
+                "abstract": doc.metadata.get("Summary", ""),
+                "pdf_url": doc.metadata.get("entry_id", ""),
+                "authors": doc.metadata.get("Authors", ""),
+                "published_date": doc.metadata.get("Published", ""),
+                "categories": ", ".join(doc.metadata.get("categories", [])),
+                "primary_category": doc.metadata.get("primary_category", "")
+            })
+        return papers
 
 class ArxivFullTextDB:
     """
@@ -584,14 +578,13 @@ class ArxivFullTextFetcher:
 def main():
     arxiv_abstract_db = ArxivAbstractDB()
     arxiv_full_text_db = ArxivFullTextDB()
-
-    prompt = "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks in an encoder-decoder configuration. The best performing models also connect the encoder and decoder through an attention mechanism. We propose a new simple network architecture,"
     
     # Fetch and add abstracts
-    result = arxiv_abstract_db.check_query_relevance(prompt)
-    result_from_query = arxiv_abstract_db.query(prompt, top_k=2)
-    print(result)
-    print(result_from_query)
+    fetcher = ArxivAbstractFetcher()
+    abstracts = fetcher.fetch_arxiv_abstracts(search_term="transformers", max_results=100)
+    for abstract in abstracts:
+        print(abstract.get("title"))
+
 
 if __name__ == "__main__":
     main()
