@@ -66,19 +66,19 @@ The user is asking you to do research on a specific topic. We have outlined the 
 4. Name of Task: Summarize the paper
 (Below is information about the task above, do not include it in the task description)
 - Inputs: Paper title, paper abstract
-- Outputs: Summary of the paper
+- Outputs: Summary of the paper, citations
 - Prerequisites: 1 OR 3
 
 5. Name of Task: Summarize the abstract
 (Below is information about the task above, do not include it in the task description)
 - Inputs: Abstract
-- Outputs: Summary of the abstract
+- Outputs: Summary of the abstract, citations
 - Prerequisites: 2 OR 3
 
 6. Name of Task: Compress the summaries into a single summary
 (Below is information about the task above, do not include it in the task description)
 - Inputs: Summary of the paper, summary of the abstract
-- Outputs: Compressed summary
+- Outputs: Compressed summary, citations
 - Prerequisites: 4 OR 5
 - SHOULD ALWAYS BE COMPLETED
 """
