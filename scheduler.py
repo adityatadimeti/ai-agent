@@ -9,7 +9,7 @@ from langgraph.constants import Send
 from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
 from langchain_mistralai import ChatMistralAI
 from typing_extensions import Literal
-from langchain_core.tools import tool   
+from langchain_core.tools import tool  
 from vector_db.arxiv_vector_db import ArxivAbstractDB, ArxivFullTextDB, ArxivAbstractFetcher, ArxivFullTextFetcher
 from pydantic import BaseModel, Field
 from typing import List, Dict
@@ -127,6 +127,34 @@ class ChatBotTools:
         search_term = call_llm(search_term_prompt)
         return {"search_term": search_term.content}
 
+    def check_url_in_input_node(self, state: ChatbotState):
+        """Check if a URL was provided in the user input and extract it"""
+        print("Checking for URL in user input...")
+        
+        url_extract_prompt = f"""
+        User's request: {state["user_request"].request}
+        
+        Does this request contain a URL (web address) such as an arxiv.org link, DOI, or other research paper identifier?
+        Analyze the text carefully for anything that looks like a URL or paper identifier.
+        
+        If you detect a URL or paper identifier, extract and return ONLY the URL including the https://.
+        If no URL or identifier is found, return only "FALSE".
+        """
+        
+        url_extract_result = call_llm(url_extract_prompt)
+        result_content = url_extract_result.content.strip()
+        
+        has_url = result_content.upper() != "FALSE"
+        extracted_url = result_content if has_url else ""
+        
+        print(f"URL detected: {has_url}")
+        if has_url:
+            print(f"Extracted URL: {extracted_url}")
+            # Update the search term to the extracted URL
+            return {"search_term": extracted_url}
+        
+        # If no URL found, keep the original search term
+        return {"search_term": state["search_term"]}
 
     def check_local_vector_database_node(self, state: ChatbotState):
         """Check the local vector database for relevance"""
@@ -186,12 +214,33 @@ class ChatBotTools:
         if state["new_tasks"][2]["task"] != "None"and state["check_local_vector_database_info"] == []:
             logger.info(f"TASK 3: Fetching {number_of_papers} papers from Arxiv API for search term: {state['search_term']}")
 
+            # Check if the search term is a URL
+            is_url = "arxiv.org" in state["search_term"] or "http" in state["search_term"]
+            
+            if is_url:
+                # Extract paper ID from URL if it's an arxiv URL
+                paper_id = None
+                if "arxiv.org/abs/" in state["search_term"]:
+                    paper_id = state["search_term"].split("arxiv.org/abs/")[1].split()[0]
+                elif "arxiv.org/pdf/" in state["search_term"]:
+                    paper_id = state["search_term"].split("arxiv.org/pdf/")[1].split(".pdf")[0]
+                
+                if paper_id:
+                    print(f"Fetching specific paper with ID: {paper_id}")
+                    # Use the ArxivLoader to fetch the specific paper
+                    try:
+                        papers = self.arxiv_full_text_fetcher.fetch_arxiv_full_text_from_id(paper_id)
+                        self.arxiv_full_text_db.add_papers(papers)
+                        return {"arxiv_api_papers_info": papers}
+                    except Exception as e:
+                        print(f"Error fetching specific paper: {e}")
+                        # Fall back to regular query if direct fetch fails
+            
+            # Regular query if not a URL or direct fetch failed
             papers = self.arxiv_full_text_fetcher.fetch_arxiv_full_text_from_query(state["search_term"], number_of_papers)
-
             # TODO: WP 3/11/24: bypassing ChromaDB for now
             if False:
                 self.arxiv_full_text_db.add_papers(papers)
-
             return {"arxiv_api_papers_info": papers}
 
         else:
@@ -404,6 +453,7 @@ def run_v1(prompt: str):
 
     chatbot_builder = StateGraph(ChatbotState)
     chatbot_builder.add_node("extract_search_term", chatbot_tools.extract_search_term_node)
+    chatbot_builder.add_node("check_url_in_input", chatbot_tools.check_url_in_input_node)
     chatbot_builder.add_node("review_tasks", review_tasks)
     chatbot_builder.add_node("check_local_vector_database", chatbot_tools.check_local_vector_database_node)
     chatbot_builder.add_node("query_arxiv_api_abstracts", chatbot_tools.query_arxiv_api_abstracts_node)
@@ -414,7 +464,8 @@ def run_v1(prompt: str):
     chatbot_builder.add_node("final_task", chatbot_tools.final_task_node)
 
     chatbot_builder.add_edge(START, "extract_search_term")
-    chatbot_builder.add_edge("extract_search_term", "review_tasks")
+    chatbot_builder.add_edge("extract_search_term", "check_url_in_input")
+    chatbot_builder.add_edge("check_url_in_input", "review_tasks")
     chatbot_builder.add_edge("review_tasks", "check_local_vector_database")
     chatbot_builder.add_edge("check_local_vector_database", "query_arxiv_api_abstracts")
     chatbot_builder.add_edge("query_arxiv_api_abstracts", "query_arxiv_api_papers")
@@ -430,5 +481,6 @@ def run_v1(prompt: str):
     return state["final_task_info"]
 
 
-# run_v1("I am reading a paper called Restructuring Vector Quantization with the Rotation Trick. Can you help me understand it?")
-# print(state)
+# state = run_v1("I am reading a paper called Restructuring Vector Quantization with the Rotation Trick. Can you help me understand it?")
+state = run_v1("I want to learn more about https://arxiv.org/abs/2205.14135. Tell me aboout it.")
+print(state)
