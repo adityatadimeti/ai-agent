@@ -5,6 +5,10 @@ import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from scheduler import run_v1, call_llm
+import logging
+from bot_utils import find_existing_thread, queue_message, queue_chunked_message
+
+logger = logging.getLogger("agent")
 
 MISTRAL_MODEL = "mistral-large-latest"
 SYSTEM_PROMPT = "You are a helpful assistant. Summarize the following arxiv papers in a clear and concise way, focusing on the key findings and implications."
@@ -69,20 +73,34 @@ class MistralAgent:
 
         return combined_text
 
-    async def run(self, message: discord.Message):
-        print("Message: ", message.content)
-        return run_v1(message.content)
+    def run(self, message: discord.Message):
+        response = run_v1(message.content)
+        logger.info(f"Response: {response}")
+        # if response:
+        #     # Create a thread if needed, using create_task to not block
+        #     # thread_name = "Profile Setup - " + message.author.name if "profile" in response.lower() else self.make_thread_name(message)
+            
+        #     # Check if the thread already exists - do this asynchronously
+        #     # existing_thread = find_existing_thread(message.channel, thread_name)
+            
+        #     # # If the thread already exists, use it
+        #     # if existing_thread:
+        #     #     thread = existing_thread
+        #     #     queue_message(message.channel, f"Let's discuss more in the previous thread {thread.mention}")
+            
+        #     # Send response in chunks using the rate-limited queue
+        #     queue_chunked_message(outbound_message_queue, message, response)
+            
+        return response
 
     async def make_thread_name(self, message: discord.Message):
         """Extract the title of the thread from the user's request"""
-        print("User's request: ", message.content)
         title_of_thread_prompt = f"""
             User's request: {message.content}
             Extract the title of the thread from the user's request that is succinct, less than 7 words.
             Only output the title of the thread, nothing else.
         """
-        print("Title of thread prompt: ", title_of_thread_prompt)
         title_of_thread = call_llm(title_of_thread_prompt)
-        print("Title of thread: ", title_of_thread.content)
+        logger.info(f"Title of thread: {title_of_thread.content}")
         return title_of_thread.content
     

@@ -150,7 +150,6 @@ async def create_profile(user: discord.Member, message: discord.Message, bot: co
     while True:
         try:
             blurb_msg = await bot.wait_for('message', check=check, timeout=120)
-            print("Checking blurb message")
             blurb = blurb_msg.content
 
             await thread.send(

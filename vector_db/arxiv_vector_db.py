@@ -4,11 +4,14 @@ import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 import os
-from .mistral_embedding_function import MistralEmbeddingFunction
+from mistral_embedding_function import MistralEmbeddingFunction
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from typing import List, Dict
 import time
 from langchain_community.document_loaders import ArxivLoader
+import logging
+
+logger = logging.getLogger("arxiv")
 
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 
@@ -55,13 +58,11 @@ class ArxivAbstractDB:
                 name=self.collection_name,
                 embedding_function=self.embedding_function
             )
-            print(f"Found existing collection: {self.collection_name}")
         except:
             collection = self.chroma_client.create_collection(
                 name=self.collection_name,
                 embedding_function=self.embedding_function
             )
-            print(f"Created new collection: {self.collection_name}")
         return collection
 
     def add_abstracts(self, abstracts: List[Dict]):
@@ -80,12 +81,12 @@ class ArxivAbstractDB:
             paper_id = f"abstract_{paper['title']}_{paper.get('published_date', '')}"
             # Remove special characters and spaces to make a valid ID
             paper_id = "".join(c if c.isalnum() else "_" for c in paper_id)
-            print("paper_id: ", paper_id)
+            logger.info(f"paper_id: {paper_id[:30]}")
             
             # Check if document with this ID already exists
             existing_doc = self.collection.get(ids=[paper_id])
             if existing_doc['ids']:
-                print(f"Document {paper_id} already exists, skipping...")
+                logger.info(f"Document {paper_id} already exists, skipping...")
                 continue
                 
             # Combine title and abstract
@@ -103,7 +104,7 @@ class ArxivAbstractDB:
             ids.append(paper_id)
         
         if not documents:  # Skip if no new documents to add
-            print("No new abstracts to add")
+            logger.info("No new abstracts to add")
             return
             
         # Add documents in batches
@@ -228,17 +229,16 @@ class ArxivAbstractFetcher:
             load_all_available_meta=True,
             load_full_text=False  # Only load abstracts
         )
-        
-        # Load documents (this will fetch metadata and abstracts)
-        documents = loader.lazy_load()
+
+        # Load documents (this will fetch PDFs and convert them to text)
+        documents = loader.load()
         
         # Convert documents to our paper format
         papers = []
         for doc in documents:
-            abstract = doc.metadata.get("Summary", "").replace("\n", " ")
             papers.append({
                 "title": doc.metadata.get("Title", ""),
-                "abstract": abstract,
+                "abstract": doc.metadata.get("Summary", ""),
                 "pdf_url": doc.metadata.get("entry_id", ""),
                 "authors": doc.metadata.get("Authors", ""),
                 "published_date": doc.metadata.get("Published", ""),
@@ -552,7 +552,7 @@ class ArxivFullTextFetcher:
         )
         
         # Load documents (this will fetch PDFs and convert them to text)
-        documents = loader.lazy_load()
+        documents = loader.load()
         
         # Convert documents to our paper format
         papers = []
@@ -578,14 +578,13 @@ class ArxivFullTextFetcher:
 def main():
     arxiv_abstract_db = ArxivAbstractDB()
     arxiv_full_text_db = ArxivFullTextDB()
-
-    prompt = "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks in an encoder-decoder configuration. The best performing models also connect the encoder and decoder through an attention mechanism. We propose a new simple network architecture,"
     
     # Fetch and add abstracts
-    result = arxiv_abstract_db.check_query_relevance(prompt)
-    result_from_query = arxiv_abstract_db.query(prompt, top_k=2)
-    print(result)
-    print(result_from_query)
+    fetcher = ArxivAbstractFetcher()
+    abstracts = fetcher.fetch_arxiv_abstracts(search_term="transformers", max_results=100)
+    for abstract in abstracts:
+        print(abstract.get("title"))
+
 
 if __name__ == "__main__":
     main()
