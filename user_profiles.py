@@ -129,16 +129,7 @@ async def create_profile(user: discord.Member, message: discord.Message, bot: co
     thread = await message.create_thread(name=f"Profile Setup - {user_id}")
     await thread.send(
         """
-        Hi! Looks like you are a new user!
-        
-        I am an Arxiv bot and will try my best to help you with questions regarding:
-        1. Research questions
-        2. Academic literature queries
-        3. General Q&A and Recommendations with responses sourced from Arxiv
-
-        I would love to gather a user profile for you so I can better understand your interests, keep track of our conversations, and recommend things to you if you ask
-
-        Can you please provide me your name and a short description of your research interests, topics you want to explore, etc.?
+        Hi! Looks like you are a new user!\n\nI am an Arxiv bot and will try my best to help you with questions regarding:\n1. Research questions\n2. Academic literature queries\n3. General Q&A and Recommendations with responses sourced from Arxiv\n\nI would love to gather a user profile for you so I can better understand your interests, keep track of our conversations, and recommend things to you if you ask\n\nCan you please provide me your name and a short description of your research interests, topics you want to explore, etc.?
         """
     )
 
@@ -154,11 +145,7 @@ async def create_profile(user: discord.Member, message: discord.Message, bot: co
 
             await thread.send(
                 f"""
-                Confirming that this is your preferred description?
-
-                {str(blurb)}
-
-                If so, say "yes". Otherwise, submit a new one
+                Confirming that this is your preferred description?\n\n{str(blurb)}\n\nIf so, say "yes". Otherwise, submit a new one
                 """
             )
             confirmation_msg = await bot.wait_for('message', check=check, timeout=120)

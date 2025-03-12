@@ -4,7 +4,7 @@ import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 import os
-from mistral_embedding_function import MistralEmbeddingFunction
+from .mistral_embedding_function import MistralEmbeddingFunction
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from typing import List, Dict
 import time
@@ -553,7 +553,8 @@ class ArxivFullTextFetcher:
         
         # Load documents (this will fetch PDFs and convert them to text)
         documents = loader.load()
-        
+        print("Documents:", documents)
+
         # Convert documents to our paper format
         papers = []
         for doc in documents:
@@ -575,16 +576,16 @@ class ArxivFullTextFetcher:
 # If not fetch arxiv abstracts
 
 
-def main():
-    arxiv_abstract_db = ArxivAbstractDB()
-    arxiv_full_text_db = ArxivFullTextDB()
+# def main():
+#     arxiv_abstract_db = ArxivAbstractDB()
+#     arxiv_full_text_db = ArxivFullTextDB()
     
-    # Fetch and add abstracts
-    fetcher = ArxivAbstractFetcher()
-    abstracts = fetcher.fetch_arxiv_abstracts(search_term="transformers", max_results=100)
-    for abstract in abstracts:
-        print(abstract.get("title"))
+#     # Fetch and add abstracts
+#     fetcher = ArxivAbstractFetcher()
+#     abstracts = fetcher.fetch_arxiv_abstracts(search_term="transformers", max_results=100)
+#     for abstract in abstracts:
+#         print(abstract.get("title"))
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

@@ -230,7 +230,7 @@ class ChatBotTools:
                     # Use the ArxivLoader to fetch the specific paper
                     try:
                         papers = self.arxiv_full_text_fetcher.fetch_arxiv_full_text_from_id(paper_id)
-                        self.arxiv_full_text_db.add_papers(papers)
+                        # self.arxiv_full_text_db.add_papers(papers)
                         return {"arxiv_api_papers_info": papers}
                     except Exception as e:
                         print(f"Error fetching specific paper: {e}")
@@ -258,7 +258,8 @@ class ChatBotTools:
                 abstract_summary_prompt = f"""
                 Here is the goal of the user: {state["user_request"].request}
                 Here is the abstract: {abstract}
-                Summarize the abstract in {number_of_bullets} detailed and technical bullet points that is less than 2 sentences each"""
+                Summarize the abstract in {number_of_bullets} detailed and technical bullet points that is less than 2 sentences each
+                ALWAYS Cite your sources"""
         
                 abstract_summary = call_llm(abstract_summary_prompt)
                 abstract_summaries.append(abstract_summary.content)
@@ -293,7 +294,7 @@ class ChatBotTools:
                     Here is the goal of the user: {state["user_request"].request}
                     Here is the title of the paper: {paper["title"]}
                     Here is a section of the paper: {chunk}
-                    Summarize this section in {number_of_bullets} detailed and technical bullet points that is less than 2 sentences each. Do not include any other text than the bullet points."""
+                    Summarize this section in {number_of_bullets} detailed and technical bullet points that is less than 2 sentences each. Do not include any other text than the bullet points. ALWAYS Cite your sources"""
             
                     chunk_summary = call_llm(chunk_summary_prompt)
                     chunk_summaries.append(chunk_summary.content)
@@ -315,7 +316,7 @@ class ChatBotTools:
             Here is the goal of the user: {state["user_request"].request}
             Here is the summary of the abstract: {state["summarize_abstract_info"]}
             Here is the summary of the paper: {state["summarize_paper_info"]}
-            Compress the summaries into a single summary in less than 1000 words. Use bullet points as much as possible. Be extremely technical, cogent, and convincing."""
+            Compress the summaries into a single summary in less than 1000 words. Use bullet points as much as possible. Be extremely technical, cogent, and convincing. ALWAYS Cite your sources"""
 
             compressed_summary = call_llm(compression_prompt)
             print("Compressed summary: ", compressed_summary.content)
@@ -482,5 +483,5 @@ def run_v1(prompt: str):
 
 
 # state = run_v1("I am reading a paper called Restructuring Vector Quantization with the Rotation Trick. Can you help me understand it?")
-state = run_v1("I want to learn more about https://arxiv.org/abs/2205.14135. Tell me aboout it.")
-print(state)
+# state = run_v1("I want to learn more about https://arxiv.org/abs/2205.14135. Tell me aboout it.")
+# print(state)
