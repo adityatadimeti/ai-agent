@@ -83,6 +83,7 @@ TASKS = [
 
 class UserRequest(BaseModel):
     request: str = Field(None, description="Request that is what the user is asking you to do")
+    chat_history: List[Dict[str, str]] = Field(default_factory=list, description="History of previous chat messages")
 
 # Graph state
 class ChatbotState(TypedDict):
@@ -276,13 +277,57 @@ class ChatBotTools:
         if state["new_tasks"][5]["task"] == "None":
             print("Doing task 7!")
             print("User's request: ", state["user_request"].request)
-            random_prompt = f"""
-            Remind the user that you are a bot tasked with helping research / technical questions and querying the Arxiv repository to answer them.
-            If you end up at this step, it means that the user's request is not related to research or the Arxiv repository.
-            Please mention that to them.
+            
+            # Format chat history if it exists
+            chat_history_text = ""
+            has_chat_history = hasattr(state["user_request"], "chat_history") and state["user_request"].chat_history
+            if has_chat_history:
+                chat_history_text = state["user_request"].chat_history
+            
+            # First determine if user is referencing previous chat
+            reference_detection_prompt = f"""
             User's request: {state["user_request"].request}
+            
+            {chat_history_text if has_chat_history else "No chat history available."}
+            
+            Analyze the user's request and determine if they are referencing or following up on something from a previous conversation.
+            Look for:
+            - Pronouns without clear referents (it, that, those, etc.)
+            - Questions that seem to continue a previous topic
+            - Requests for clarification or elaboration without specifying what
+            - Mentions of "earlier", "before", "you mentioned", etc.
+            - Phrases such as "last chat", "previous chat", "previous conversation", etc.
+            
+            Return only "YES" if the user is likely referencing previous chat, or "NO" if it's a standalone request.
             """
-            response = call_llm(random_prompt)
+            
+            reference_detection = call_llm(reference_detection_prompt)
+            print("Reference detection: ", reference_detection.content)
+            is_referencing_history = "YES" in reference_detection.content.upper()
+            
+            # Generate appropriate response based on detection
+            if is_referencing_history and has_chat_history:
+                response_prompt = f"""                
+                User's request: {state["user_request"].request}
+                
+                The user appears to be referencing your previous conversation. You have access to the following chat history to provide a contextually appropriate response.
+
+                User's chat history (from earliest to latest): {chat_history_text}
+
+                You have access to the above chat history, do not say that you do not have access to it.
+                """
+            else:
+                response_prompt = f"""
+                Remind the user that you are a bot tasked with helping research / technical questions and querying the Arxiv repository to answer them.
+                If you end up at this step, it means that the user's request is not related to research or the Arxiv repository.
+                Please mention that to them.
+                
+                User's request: {state["user_request"].request}
+                """
+            
+            print("Response prompt: ", response_prompt)
+            
+            response = call_llm(response_prompt)
             print("Response: ", response.content)
             return {"final_task_info": response.content}
 
@@ -343,7 +388,22 @@ def review_tasks(state: ChatbotState):
 
 def run_v1(prompt: str):
     structured_llm = llm.with_structured_output(UserRequest)
-    message = call_structured_llm(structured_llm, prompt)
+    
+    # Add instructions to extract just the current request
+    formatted_prompt = f"""
+    The following contains a chat history followed by the user's current request.
+    Please extract:
+    1. ONLY the user's current request (their most recent message)
+    2. The previous chat history as a list of messages
+    
+    Format your response as a structured object with 'request' and 'chat_history' fields.
+    
+    {prompt}
+    """
+    
+    message = call_structured_llm(structured_llm, formatted_prompt)
+    print("prompt_v1: ", prompt)
+    print("message_v1: ", message)
     chatbot_tools = ChatBotTools()
 
     chatbot_builder = StateGraph(ChatbotState)
@@ -371,6 +431,7 @@ def run_v1(prompt: str):
     chatbot = chatbot_builder.compile()
 
     state = chatbot.invoke({"user_request": message})
+    # print("State: ", state)
     return state["final_task_info"]
 
 

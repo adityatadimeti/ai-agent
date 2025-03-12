@@ -62,24 +62,60 @@ class User:
             
         self.context_string = self.context_to_string()
 
+    def update_history(self, interaction_type: InteractionType, text: str, num_tokens: int):
+        """
+        Update the user's conversation history with a new interaction.
+        
+        Args:
+            interaction_type: Type of interaction (USER or SYSTEM)
+            text: Content of the message
+            num_tokens: Approximate number of tokens in the message
+        """
+        # Create a new interaction
+        new_interaction = {
+            "interaction_type": interaction_type.value,
+            "text": text,
+            "num_tokens": num_tokens
+        }
+        
+        # Check if the message is too long and truncate if necessary
+        if num_tokens > MAX_MEMORY_TOKENS:
+            # Truncate the text (this is a simplification - in reality you'd want to truncate by tokens)
+            text = text[:MAX_MEMORY_TOKENS * 4]  # Rough approximation of characters per token
+            new_interaction["text"] = text
+            new_interaction["num_tokens"] = MAX_MEMORY_TOKENS
+        
+        # Remove old messages if adding this would exceed the token limit
+        while self.context_dict['num_token'] + new_interaction["num_tokens"] > MAX_MEMORY_TOKENS and self.context_dict['message_history']:
+            removed = self.context_dict['message_history'].pop(0)
+            self.context_dict['num_token'] -= removed["num_tokens"]
+        
+        # Add the new interaction
+        self.context_dict['message_history'].append(new_interaction)
+        self.context_dict['num_token'] += new_interaction["num_tokens"]
+        
+        # Update the context string
+        self.context_string = self.context_to_string()
+        
+        # Save the updated memory to file
+        self.save_memory()
+
+    def save_memory(self):
+        """Save the current memory to the memory.json file"""
+        memory_path = os.path.join(self.data_path, "memory.json")
+        os.makedirs(self.data_path, exist_ok=True)
+        with open(memory_path, "w") as f:
+            json.dump(self.context_dict, f)
+
     def context_to_string(self):
+        """Convert the context dictionary to a string for the LLM"""
         context_string = "\nBEGINNING OF CONTEXT WITH USER\n"
         context_string += "(NOTE THAT THIS IS LIMITED CONTEXT!)\n"
-        print(self.context_dict)
+        
         for interaction in self.context_dict['message_history']:
-            context_string += f"{interaction.interaction_type}: \n {interaction.text} \n\n"
+            context_string += f"{interaction['interaction_type']}: \n {interaction['text']} \n\n"
 
         return context_string
-    
-    def update_history(self, new_interaction):
-        if new_interaction.num_tokens > MAX_MEMORY_TOKENS:
-            new_interaction.text = new_interaction.text[-MAX_MEMORY_TOKENS:]
-        while self.context_dict['num_token'] + new_interaction.num_tokens > MAX_MEMORY_TOKENS:
-            out = self.context_dict['message_history'].pop(0)
-            self.context_dict['num_token'] -= out
-        self.context_dict['message_history'].append(new_interaction)
-        self.context_string = self.context_to_string
-        
 
 async def create_profile(user: discord.Member, message: discord.Message, bot: commands.Bot) -> User:
     """
